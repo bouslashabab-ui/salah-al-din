@@ -1424,7 +1424,29 @@ const W3 = (() => {
   let shakeAmt = 0, shakeT = 0;
   let targetX = 0;
 
+  // procedural canvas textures (from ChatGPT/Gemini art tips): cloth weave bump, mail ring bump
+  let _weave = null, _mail = null;
+  function procTex(kind) {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const x = c.getContext('2d');
+    if (kind === 'weave') {
+      x.fillStyle = '#808080'; x.fillRect(0, 0, 64, 64);
+      for (let i = 0; i < 64; i += 4) for (let j = 0; j < 64; j += 4) {
+        x.fillStyle = ((i + j) / 4) % 2 ? '#b0b0b0' : '#555'; x.fillRect(i, j + 1, 4, 2);
+      }
+    } else {
+      x.fillStyle = '#404040'; x.fillRect(0, 0, 64, 64);
+      for (let i = 0; i < 64; i += 6) for (let j = 0; j < 64; j += 6) {
+        x.strokeStyle = '#d0d0d0'; x.lineWidth = 1.2; x.beginPath();
+        x.arc(i + ((j / 6) % 2) * 3, j, 2.4, 0, 6.3); x.stroke();
+      }
+    }
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(3, 3);
+    return t;
+  }
   function M(color, r = 0.9, m = 0, extra = {}) {
+    if (!extra.bumpMap && m === 0 && (r === 0.95 || r === 0.94) && !extra.noTex) { _weave = _weave || procTex('weave'); extra = Object.assign({ bumpMap: _weave, bumpScale: 0.6 }, extra); }
+    else if (!extra.bumpMap && m >= 0.7 && r <= 0.5 && !extra.noTex) { _mail = _mail || procTex('mail'); extra = Object.assign({ bumpMap: _mail, bumpScale: 0.8 }, extra); }
     const key = color + '|' + r + '|' + m + '|' + JSON.stringify(extra);
     if (matCache.has(key)) return matCache.get(key);
     const mat = new THREE.MeshStandardMaterial(Object.assign({ color, roughness: r, metalness: m }, extra));
@@ -1522,6 +1544,7 @@ const W3 = (() => {
     buildDust();
     buildProps();
     buildWallCrowd();
+    buildFieldCrowd();
 
     // توهج الشمس (sprite إضافي)
     sunSprite = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -1843,6 +1866,49 @@ const W3 = (() => {
       g.add(sp);
     }
     scene.add(g);
+  }
+
+  let fieldCrowd = null;
+  function buildFieldCrowd() {
+    // cheap instanced background soldiers: Crusader camp (far side) and Ayyubid reserve (near side)
+    const body = new THREE.CylinderGeometry(0.22, 0.28, 1.2, 6); body.translate(0, 0.9, 0);
+    const head = new THREE.SphereGeometry(0.2, 6, 5); head.translate(0, 1.7, 0);
+    const spear = new THREE.CylinderGeometry(0.02, 0.02, 2.6, 4); spear.translate(0.3, 1.5, 0);
+    const parts = [body, head, spear];
+    let n = 0; parts.forEach(g => n += g.attributes.position.count);
+    const mk = (src) => { const g = src.index ? src.toNonIndexed() : src; return g; };
+    const geoms = parts.map(mk);
+    let total = 0; geoms.forEach(g => total += g.attributes.position.count);
+    const pos = new Float32Array(total * 3), nor = new Float32Array(total * 3); let o = 0;
+    geoms.forEach(g => { pos.set(g.attributes.position.array, o * 3); nor.set(g.attributes.normal.array, o * 3); o += g.attributes.position.count; });
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    const COUNT = 70;
+    const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0.05 });
+    const im = new THREE.InstancedMesh(geo, mat, COUNT);
+    const data = [];
+    const dummy = new THREE.Object3D(), col = new THREE.Color();
+    for (let i = 0; i < COUNT; i++) {
+      const far = i < 45;
+      const x = far ? 20 + Math.random() * 22 : -16 + Math.random() * 14;
+      const z = far ? (Math.random() < 0.5 ? -15 - Math.random() * 14 : 15 + Math.random() * 12) : (Math.random() < 0.5 ? -14 - Math.random() * 6 : 13 + Math.random() * 6);
+      data.push({ x, z, ph: Math.random() * 6.28, ry: far ? Math.PI * 0.9 + Math.random() * 0.4 : -0.3 + Math.random() * 0.6, sc: 0.85 + Math.random() * 0.3 });
+      col.setHex(far ? [0x6e2b25, 0x8a8f96, 0xb5a98a][i % 3] : [0x30506e, 0x2f5a46, 0x8a6a3a][i % 3]); im.setColorAt(i, col);
+    }
+    im.castShadow = false; im.frustumCulled = false;
+    im.userData.data = data; im.userData.dummy = dummy;
+    scene.add(im); fieldCrowd = im;
+  }
+  function updateFieldCrowd(t) {
+    if (!fieldCrowd) return;
+    const d = fieldCrowd.userData.data, du = fieldCrowd.userData.dummy;
+    for (let i = 0; i < d.length; i++) {
+      const a = d[i];
+      du.position.set(a.x, 0.04 + Math.abs(Math.sin(t * 2 + a.ph)) * 0.05, a.z);
+      du.rotation.set(0, a.ry + Math.sin(t * 0.7 + a.ph) * 0.08, Math.sin(t * 1.5 + a.ph) * 0.03);
+      du.scale.setScalar(a.sc); du.updateMatrix(); fieldCrowd.setMatrixAt(i, du.matrix);
+    }
+    fieldCrowd.instanceMatrix.needsUpdate = true;
   }
 
   function buildWallCrowd() {
@@ -2350,6 +2416,7 @@ const W3 = (() => {
   }
 
   function update(dt, t) {
+    updateFieldCrowd(t);
     // أعلام ترفرف
     if (wallGroup?.userData.flags) {
       for (const f of wallGroup.userData.flags) {
@@ -3938,4 +4005,4 @@ else UI.boot();
 
 </script>
 </body>
-  </html>
+            </html>
