@@ -333,6 +333,32 @@ body{
 .story-new{margin-top:10px!important;font-size:13px!important;color:var(--gold-lt)!important;border-top:1px solid rgba(201,162,39,.25);padding-top:10px}
 .unit-card.locked{opacity:.4;filter:grayscale(.6)}
 .unit-card.locked .uc-cost{color:rgba(233,220,192,.5)}
+
+
+/* ---------- الإنجازات والرتبة ---------- */
+.rank-box{display:flex;align-items:baseline;gap:8px 10px;flex-wrap:wrap;padding:10px 14px;border-radius:10px;background:linear-gradient(180deg,rgba(201,162,39,.16),rgba(201,162,39,.05));border:1px solid rgba(201,162,39,.32);margin-bottom:12px}
+.rank-label{font-size:12px;color:rgba(233,220,192,.6)}
+.rank-box b{font-family:var(--font-display);font-size:20px;color:var(--gold-lt)}
+.rank-sub{font-size:12px;color:rgba(233,220,192,.55);flex:1 0 100%;margin:0}
+.ach-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.ach-item{display:flex;align-items:center;gap:12px;padding:8px 12px;border-radius:10px;background:rgba(255,255,255,.035);border:1px solid rgba(233,220,192,.10)}
+.ach-item.on{background:linear-gradient(180deg,rgba(201,162,39,.18),rgba(201,162,39,.05));border-color:rgba(201,162,39,.45)}
+.ach-item .ach-ico{width:34px;height:34px;flex:0 0 34px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(0,0,0,.35);border:1px solid rgba(201,162,39,.3);font-size:16px;color:var(--gold-lt)}
+.ach-item:not(.on) .ach-ico{color:rgba(233,220,192,.3);border-color:rgba(233,220,192,.12)}
+.ach-item .ach-txt{display:flex;flex-direction:column;gap:2px;text-align:start}
+.ach-item .ach-txt b{font-size:14px;font-weight:700}
+.ach-item .ach-txt span{font-size:12px;color:rgba(233,220,192,.6)}
+.ach-item .ach-mark{margin-inline-start:auto;font-size:12px;color:var(--ok);opacity:0}
+.ach-item.on .ach-mark{opacity:1}
+
+.ach-toast{position:fixed;top:14px;left:50%;transform:translate(-50%,-24px);z-index:60;display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:12px;background:linear-gradient(180deg,rgba(32,36,44,.97),rgba(16,19,26,.97));border:1px solid rgba(201,162,39,.55);box-shadow:0 14px 34px rgba(0,0,0,.5);opacity:0;transition:opacity .28s ease,transform .28s ease;pointer-events:none}
+.ach-toast.show{opacity:1;transform:translate(-50%,0)}
+.ach-toast i{font-style:normal;font-size:18px;color:var(--gold-lt)}
+.ach-toast div{display:flex;flex-direction:column;line-height:1.25}
+.ach-toast b{font-size:11px;letter-spacing:.4px;color:var(--gold);text-transform:uppercase}
+.ach-toast span{font-size:14px;font-weight:700;color:var(--parchment)}
+.tut-modal{width:min(420px,92vw)}
+.tut-modal p{font-size:15px;line-height:1.8}
 </style>
 </head>
 <body>
@@ -362,6 +388,7 @@ body{
       <button class="btn btn-primary" id="btn-continue">ابدأ المعركة</button>
       <button class="btn" id="btn-levels">اختر معركة</button>
       <div class="title-row">
+        <button class="btn btn-ghost" id="btn-ach">الإنجازات</button>
         <button class="btn btn-ghost" id="btn-settings">الإعدادات</button>
         <button class="btn btn-ghost" id="btn-about">عن اللعبة</button>
       </div>
@@ -456,6 +483,27 @@ body{
 </section>
 
 <!-- ===== الإعدادات ===== -->
+<div class="overlay" id="ach-overlay">
+  <div class="modal modal-wide">
+    <h3>الإنجازات</h3>
+    <div class="rank-box">
+      <span class="rank-label">رتبتك</span>
+      <b id="ach-rank">مبتدئ</b>
+      <span class="rank-sub" id="ach-rank-sub"></span>
+    </div>
+    <ul class="ach-list" id="ach-list"></ul>
+    <div class="modal-actions"><button class="btn btn-primary" id="btn-close-ach">تم</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="tut-overlay">
+  <div class="modal tut-modal">
+    <h3 id="tut-title">تعليمات سريعة</h3>
+    <p id="tut-text"></p>
+    <div class="modal-actions"><button class="btn btn-primary" id="btn-tut-next">التالي</button></div>
+  </div>
+</div>
+
 <div class="overlay" id="settings-overlay">
   <div class="modal">
     <h3>الإعدادات</h3>
@@ -2711,7 +2759,8 @@ const UI = (() => {
   const $ = (s) => document.querySelector(s);
   const el = {};
   const SAVE_KEY = 'salahaldin.save.v1';
-  let save = { unlocked: 1, stars: Array(5).fill(0), settings: { music: true, sfx: true, haptic: true, speed: 1 } };
+  let save = { unlocked: 1, stars: Array(5).fill(0), settings: { music: true, sfx: true, haptic: true, speed: 1 },
+    ach: {}, stats: { kills: 0, wins: 0, plays: 0, abilities: 0 }, tut: 0 };
   let canvas, current = 'title';
   let selectedUnit = null;
   let lastT = 0, raf = 0;
@@ -2728,6 +2777,9 @@ const UI = (() => {
         const s = JSON.parse(raw);
         save = Object.assign(save, s);
         save.settings = Object.assign({ music: true, sfx: true, haptic: true, speed: 1 }, s.settings || {});
+        save.ach = Object.assign({}, s.ach || {});
+        save.stats = Object.assign({ kills: 0, wins: 0, plays: 0, abilities: 0 }, s.stats || {});
+        save.tut = s.tut || 0;
       }
     } catch (e) { /* تجاهل */ }
   }
@@ -2886,6 +2938,7 @@ const UI = (() => {
     $('#pause-overlay').classList.remove('open');
     S.paused = false;
     lastT = performance.now();
+    if ((save.tut || 0) < 3) { save.tut = Math.max(1, save.tut || 1); persist(); setTimeout(tutShow, 700); }
   }
 
   let S = null;
@@ -3004,6 +3057,7 @@ const UI = (() => {
     if (selectedUnit) {
       const slot = nearestSlot(p.x);
       if (GAME.place(selectedUnit, lane, slot)) {
+        if ((save.tut || 0) === 1) tutAdvance(2);
         if (save.settings.haptic && navigator.vibrate) navigator.vibrate(12);
         if (S.gold < GAME.UNITS[selectedUnit].cost) { selectedUnit = null; document.querySelectorAll('.unit-card').forEach((c) => c.classList.remove('selected')); }
       }
@@ -3060,9 +3114,119 @@ const UI = (() => {
     }
   }
 
+
+  // ---------- الإنجازات والرتبة ----------
+  const ACH = [
+    { id: 'first_win', name: 'أول انتصار', desc: 'اكسب أول معركة', icon: '⚔' },
+    { id: 'three_star', name: 'ثلاث نجوم', desc: 'أكمل معركة بثلاث نجوم', icon: '★' },
+    { id: 'flawless', name: 'أسوار من حديد', desc: 'انتصار دون خسارة أي نقطة من البوابة', icon: '🛡' },
+    { id: 'campaign', name: 'فاتح القدس', desc: 'أكمل الحملة كاملة', icon: '۞' },
+    { id: 'kills_100', name: 'مئة قتيل', desc: 'أسقط ١٠٠ عدو', icon: '☠' },
+    { id: 'kills_500', name: 'جيش مكسور', desc: 'أسقط ٥٠٠ عدو', icon: '☠' },
+    { id: 'boss', name: 'قاتل القائد', desc: 'أسقط قائد الحملة', icon: '♛' },
+    { id: 'veteran', name: 'مجاهد متمرّس', desc: 'اخض ١٠ معارك', icon: '⚑' },
+    { id: 'abilities', name: 'سيد القدرات', desc: 'استخدم القدرات ١٥ مرة', icon: '✦' },
+    { id: 'allstars', name: 'الكمال', desc: 'اجمع ١٥ نجمة', icon: '✧' },
+  ];
+
+  function totalStars() { return (save.stars || []).reduce((a, b) => a + b, 0); }
+
+  function rankOf() {
+    const t = totalStars(), w = save.stats.wins || 0;
+    if (t >= 15) return { name: 'فاتح القدس', next: 'أكملت كل شيء — أعد المعارك لتحسين نجومك' };
+    if (t >= 10) return { name: 'قائد الجيش', next: `باقي ${15 - t} نجمة للرتبة الأخيرة` };
+    if (t >= 6) return { name: 'فارس', next: `باقي ${10 - t} نجمة لرتبة قائد الجيش` };
+    if (t >= 3 || w >= 1) return { name: 'مجاهد', next: `باقي ${Math.max(0, 6 - t)} نجمة لرتبة فارس` };
+    return { name: 'مبتدئ', next: 'اكسب أول نجمة لترتقي' };
+  }
+
+  function unlockAch(id) {
+    if (save.ach[id]) return;
+    const a = ACH.find((x) => x.id === id);
+    if (!a) return;
+    save.ach[id] = 1;
+    persist();
+    achToast(a);
+    if (save.settings.sfx) { try { AUDIO.sfx.victory && AUDIO.sfx.coin(); } catch (e) {} }
+  }
+
+  function achToast(a) {
+    const d = document.createElement('div');
+    d.className = 'ach-toast';
+    const i = document.createElement('i'); i.textContent = a.icon;
+    const box = document.createElement('div');
+    const b = document.createElement('b'); b.textContent = 'إنجاز جديد';
+    const sp = document.createElement('span'); sp.textContent = a.name;
+    box.appendChild(b); box.appendChild(sp);
+    d.appendChild(i); d.appendChild(box);
+    document.body.appendChild(d);
+    requestAnimationFrame(() => d.classList.add('show'));
+    setTimeout(() => { d.classList.remove('show'); setTimeout(() => d.remove(), 400); }, 3200);
+  }
+
+  function checkAch(won, stars) {
+    const st = save.stats;
+    if (won) {
+      unlockAch('first_win');
+      if (stars === 3) unlockAch('three_star');
+      if (S && S.gateHp >= S.gateMax) unlockAch('flawless');
+      if (S && S.levelIdx === 4) { unlockAch('campaign'); unlockAch('boss'); }
+    }
+    if (st.kills >= 100) unlockAch('kills_100');
+    if (st.kills >= 500) unlockAch('kills_500');
+    if (st.plays >= 10) unlockAch('veteran');
+    if ((st.abilities || 0) >= 15) unlockAch('abilities');
+    if (totalStars() >= 15) unlockAch('allstars');
+  }
+
+  function renderAch() {
+    const list = $('#ach-list');
+    if (!list) return;
+    const r = rankOf();
+    $('#ach-rank').textContent = r.name;
+    $('#ach-rank-sub').textContent = `${totalStars()} / 15 نجمة · ${save.stats.wins || 0} انتصار · ${r.next}`;
+    list.innerHTML = '';
+    ACH.forEach((a) => {
+      const li = document.createElement('li');
+      li.className = 'ach-item' + (save.ach[a.id] ? ' on' : '');
+      const ic = document.createElement('span'); ic.className = 'ach-ico'; ic.textContent = a.icon;
+      const tx = document.createElement('span'); tx.className = 'ach-txt';
+      const b = document.createElement('b'); b.textContent = a.name;
+      const sp = document.createElement('span'); sp.textContent = a.desc;
+      tx.appendChild(b); tx.appendChild(sp);
+      const mk = document.createElement('span'); mk.className = 'ach-mark'; mk.textContent = 'مفتوح';
+      li.appendChild(ic); li.appendChild(tx); li.appendChild(mk);
+      list.appendChild(li);
+    });
+  }
+
+  // ---------- تعليمات اللعب ----------
+  const TUT = [
+    { t: '١) ضع وحدتك الأولى', d: 'اختر وحدة من الشريط السفلي، ثم اضغط على أرض فاضية أمام السور. الوحدات تهاجم تلقائياً.' },
+    { t: '٢) الذهب يصل تباعاً', d: 'الذهب يزيد تلقائياً بمرور الوقت — من أعلى اليمين. وظّف وحدات أكثر كلما جمعت، ولا تدع الأعداء يصلون للبوابة.' },
+    { t: '٣) القدرات في وقتها', d: 'ثلاث قدرات أسفل الشاشة: رشقة سهام، تعزيز، وحملة. استخدمها عند ازدحام الأعداء. القائد في المعركة الأخيرة يحتاج تركيز النار.' },
+  ];
+
+  function tutShow() {
+    const i = Math.min(3, Math.max(1, save.tut || 1));
+    const step = TUT[i - 1];
+    $('#tut-title').textContent = step.t;
+    $('#tut-text').textContent = step.d;
+    $('#btn-tut-next').textContent = i >= 3 ? 'ابدأ القتال' : 'التالي';
+    $('#tut-overlay').classList.add('open');
+  }
+
+  function tutAdvance(i) {
+    if ((save.tut || 0) >= 3) return;
+    if (i > (save.tut || 0)) { save.tut = i; persist(); if (i <= 3) tutShow(); }
+  }
+
   // ---------- النتيجة ----------
   function showResult(won) {
     const stars = won ? (S.gateHp / S.gateMax > 0.7 ? 3 : S.gateHp / S.gateMax > 0.35 ? 2 : 1) : 0;
+    save.stats.plays = (save.stats.plays || 0) + 1;
+    save.stats.kills = (save.stats.kills || 0) + S.kills;
+    if (won) save.stats.wins = (save.stats.wins || 0) + 1;
     if (won) {
       save.stars[S.levelIdx] = Math.max(save.stars[S.levelIdx] || 0, stars);
       save.unlocked = Math.max(save.unlocked, Math.min(5, S.levelIdx + 2));
@@ -3082,6 +3246,8 @@ const UI = (() => {
       <li><span>أعداء سقطوا</span><b>${S.kills}</b></li>
       <li><span>ذهب جُمع</span><b>◈ ${S.goldEarned}</b></li>
       <li><span>قلعة متبقية</span><b>${Math.round((S.gateHp / S.gateMax) * 100)}%</b></li>`;
+    persist();
+    checkAch(won, stars);
     if (won && S.levelIdx === 4) { $('#result-sub').textContent = 'تحررت المدينة — أُغلقت الحملة. صمدت الأسوار حتى النهاية.'; }
     $('#btn-next').style.display = won && S.levelIdx < 4 ? '' : 'none';
     $('#btn-next').onclick = () => startBattle(S.levelIdx + 1);
@@ -3145,6 +3311,14 @@ const UI = (() => {
     $('#btn-levels').onclick = () => { AUDIO.resume(); AUDIO.sfx.click(); show('levels'); };
     $('#btn-settings').onclick = () => { AUDIO.sfx.click(); $('#settings-overlay').classList.add('open'); };
     $('#btn-about').onclick = () => { AUDIO.sfx.click(); $('#about-overlay').classList.add('open'); };
+    $('#btn-ach').onclick = () => { AUDIO.sfx.click(); renderAch(); $('#ach-overlay').classList.add('open'); };
+    $('#btn-close-ach').onclick = () => { AUDIO.sfx.click(); $('#ach-overlay').classList.remove('open'); };
+    $('#btn-tut-next').onclick = () => {
+      AUDIO.sfx.click();
+      $('#tut-overlay').classList.remove('open');
+      if ((save.tut || 0) >= 3) { save.tut = 3; persist(); }
+      else { save.tut = (save.tut || 1) + 1; persist(); if (save.tut <= 3) setTimeout(tutShow, 260); }
+    };
     $('#btn-close-settings').onclick = () => $('#settings-overlay').classList.remove('open');
     $('#btn-close-about').onclick = () => $('#about-overlay').classList.remove('open');
     document.querySelectorAll('[data-back]').forEach((b) => b.onclick = () => { AUDIO.sfx.click(); show(b.dataset.back); });
@@ -3156,7 +3330,16 @@ const UI = (() => {
     $('#btn-to-levels').onclick = () => { AUDIO.stopAmbience(); show('levels'); };
 
     document.querySelectorAll('.ability').forEach((b) => {
-      b.onclick = () => { AUDIO.resume(); if (GAME.ability(b.dataset.ability)) AUDIO.sfx[b.dataset.ability === 'volley' ? 'volley' : b.dataset.ability === 'rally' ? 'ability' : 'charge'](); };
+      b.onclick = () => {
+        AUDIO.resume();
+        if (GAME.ability(b.dataset.ability)) {
+          AUDIO.sfx[b.dataset.ability === 'volley' ? 'volley' : b.dataset.ability === 'rally' ? 'ability' : 'charge']();
+          save.stats.abilities = (save.stats.abilities || 0) + 1;
+          persist();
+          if ((save.tut || 0) === 2) tutAdvance(3);
+          if (save.stats.abilities >= 15) unlockAch('abilities');
+        }
+      };
     });
 
     const m = $('#opt-music'), sf = $('#opt-sfx'), hb = $('#opt-haptic'), sp = $('#opt-speed');
@@ -3246,7 +3429,7 @@ const UI = (() => {
       ability: (n) => GAME.ability(n),
       state: () => GAME.state,
       step: (seconds) => { const n = Math.round(seconds / 0.05); for (let i = 0; i < n; i++) GAME.update(0.05); updateHud(); },
-      save, show, GAME, UI, world: W3, post: POST,
+      save, show, GAME, UI, world: W3, post: POST, ACH, renderAch, tutShow,
     };
   }
 
@@ -3259,4 +3442,4 @@ else UI.boot();
 
 </script>
 </body>
-      </html>
+  </html>
