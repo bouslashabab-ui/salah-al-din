@@ -2056,25 +2056,59 @@ const W3 = (() => {
 
   function makeHorse(o) {
     const g = new THREE.Group();
-    const coat = M(o.coat || 0x6b4a30, 0.9, 0.02);
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 0.85, 4, 9), coat);
+    const coat = M(o.coat || 0x6b4a30, 0.88, 0.03);
+    const coatDark = M(o.coatDark || 0x3a2a1c, 0.92, 0.02);
+    const cloth = M(o.cloth || 0x274a6b, 0.94, 0.02);
+    const leather = M(0x3b2a1c, 0.9, 0.05);
+
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 0.85, 5, 12), coat);
     body.rotation.z = Math.PI / 2; body.position.y = 1.18; body.castShadow = true;
     g.add(body);
-    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.2, 0.62, 8), coat);
-    neck.position.set(0.62, 1.5, 0); neck.rotation.z = -0.55; neck.castShadow = true;
+    const chest = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 10), coat);
+    chest.position.set(0.55, 1.2, 0); chest.scale.set(1.05, 1.0, 0.95); chest.castShadow = true;
+    g.add(chest);
+    const rump = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 10), coat);
+    rump.position.set(-0.55, 1.2, 0); rump.scale.set(1.05, 1.05, 0.98); rump.castShadow = true;
+    g.add(rump);
+
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.22, 0.66, 10), coat);
+    neck.position.set(0.63, 1.5, 0); neck.rotation.z = -0.55; neck.castShadow = true;
     g.add(neck);
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.2, 0.19), coat);
-    head.position.set(0.92, 1.78, 0); head.rotation.z = -0.2; head.castShadow = true;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.21, 0.19), coat);
+    head.position.set(0.92, 1.76, 0); head.rotation.z = -0.18; head.castShadow = true;
     g.add(head);
+    const muzzle = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.15), coat);
+    muzzle.position.set(1.11, 1.7, 0); muzzle.rotation.z = -0.18; g.add(muzzle);
+    for (const z of [-0.06, 0.06]) {
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.11, 5), coatDark);
+      ear.position.set(0.79, 1.9, z); ear.rotation.z = -0.25; g.add(ear);
+    }
+    const mane = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.06, 0.06), coatDark);
+    mane.position.set(0.62, 1.83, 0); mane.rotation.z = -0.55; g.add(mane);
+    const forelock = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.14, 5), coatDark);
+    forelock.position.set(0.84, 1.88, 0); forelock.rotation.z = 2.6; g.add(forelock);
+
+    const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.09, 0.36), leather);
+    saddle.position.set(0.02, 1.44, 0); saddle.castShadow = true; g.add(saddle);
+    const caparison = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.3, 0.5), cloth);
+    caparison.position.set(0.02, 1.26, 0); caparison.castShadow = true; g.add(caparison);
+    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.42, 0.52), leather);
+    strap.position.set(0.3, 1.18, 0); g.add(strap);
+
     const legs = [];
     for (const [x, z] of [[0.45, 0.18], [0.45, -0.18], [-0.45, 0.18], [-0.45, -0.18]]) {
       const leg = limb(0.062, 0.7, coat);
       leg.position.set(x, 0.55, z); leg.castShadow = true;
       g.add(leg); legs.push(leg);
+      const hoof = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.065, 0.1, 8), coatDark);
+      hoof.position.set(x, 0.13, z); g.add(hoof);
+      const knee = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), coat);
+      knee.position.set(x, 0.5, z); g.add(knee);
     }
-    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.5, 5), M(0x2f2318, 0.95, 0));
-    tail.position.set(-0.72, 1.2, 0); tail.rotation.z = 0.6;
-    g.add(tail);
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.46, 6), coatDark);
+    tail.position.set(-0.74, 1.22, 0); tail.rotation.z = 0.62; g.add(tail);
+    const tail2 = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.34, 6), coatDark);
+    tail2.position.set(-0.86, 1.02, 0); tail2.rotation.z = 0.9; g.add(tail2);
     g.userData.legs = legs;
     return g;
   }
@@ -2182,7 +2216,7 @@ const W3 = (() => {
     const g = new THREE.Group();
     let body;
     if (spec.horse) {
-      const horse = makeHorse({ coat: kind === 'boss' ? 0x2b2b30 : (kind === 'cav' ? 0x6b4a30 : 0x4a3524) });
+      const horse = makeHorse({ coat: kind === 'boss' ? 0x2b2b30 : (kind === 'cav' ? 0x6b4a30 : 0x4a3524), coatDark: kind === 'boss' ? 0x141416 : 0x2f2318, cloth: spec.cloth });
       horse.scale.setScalar(1.05);
       g.add(horse);
       g.userData.horse = horse;
@@ -3829,4 +3863,4 @@ else UI.boot();
 
 </script>
 </body>
-  </html>
+                   </html>
