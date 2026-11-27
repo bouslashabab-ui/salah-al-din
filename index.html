@@ -3017,6 +3017,20 @@ const UI = (() => {
     if (selectedUnit) hint('اضغط على الأرض لوضع ' + U.name);
   }
 
+  function wavePreview() {
+    if (!S || !S.level || !S.level.waves) return '';
+    const w = S.level.waves[S.wave];
+    if (!w || !w.c) return '';
+    const parts = [];
+    for (const grp of String(w.c).split(',')) {
+      const bits = grp.split('*');
+      const E = GAME.ENEMIES[(bits[0] || '').trim()];
+      const n = parseInt(bits[1], 10) || 1;
+      if (E) parts.push(`${E.name} ${toAr(n)}`);
+    }
+    return parts.join(' · ');
+  }
+
   function callBonus() { return 12 + (S ? (S.wave || 0) * 3 : 0); }
 
   function bindCallWave() {
@@ -3049,7 +3063,10 @@ const UI = (() => {
       const cb = $('#call-bonus');
       if (cb) cb.textContent = '+' + callBonus();
     }
-    if (S.phase === 'prep') wc.textContent = `الموجة القادمة بعد ${Math.ceil(S.prepT)} ث`;
+    if (S.phase === 'prep') {
+      const pv = wavePreview();
+      wc.textContent = `الموجة القادمة بعد ${Math.ceil(S.prepT)} ث` + (pv ? ` — ${pv}` : '');
+    }
     else if (S.phase === 'fight') wc.textContent = `${S.enemies.filter((e) => e.alive).length} على الأرض`;
     else wc.textContent = '';
     const bb = $('#boss-bar');
@@ -3556,4 +3573,4 @@ else UI.boot();
 
 </script>
 </body>
-  </html>
+    </html>
