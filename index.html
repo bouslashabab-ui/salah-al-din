@@ -373,6 +373,18 @@ body{
 .boss-bar b{display:block;height:100%;width:100%;background:linear-gradient(90deg,#8d3126,#e0a13a);transition:width .18s linear}
 .combo{position:fixed;left:50%;top:44%;transform:translate(-50%,-50%);z-index:6;pointer-events:none;font-family:var(--font-display);font-size:clamp(24px,3.2vw,40px);color:#f5e2a8;text-shadow:0 4px 18px rgba(0,0,0,.7),0 0 22px rgba(201,162,39,.55);opacity:0;transition:opacity .2s ease,transform .2s ease}
 .combo.show{opacity:1;transform:translate(-50%,-50%) scale(1.06)}
+
+
+/* ---------- استدعاء الموجة مبكراً + لمسات واجهة ---------- */
+.call-wave{display:none;margin:6px auto 0;padding:7px 14px;border-radius:999px;border:1px solid rgba(201,162,39,.5);background:linear-gradient(180deg,rgba(201,162,39,.22),rgba(201,162,39,.06));color:var(--gold-lt);font-family:var(--font-ui);font-size:12px;font-weight:700;letter-spacing:.2px;cursor:pointer;pointer-events:auto}
+.call-wave.on{display:block}
+.call-wave b{font-weight:900;color:#fff2c9}
+.call-wave:active{transform:scale(.97)}
+.unit-card{transition:transform .12s ease,border-color .16s ease,box-shadow .16s ease}
+.unit-card:hover{transform:translateY(-2px) scale(1.03)}
+.unit-card:active{transform:scale(.96)}
+@keyframes shakeX{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px)}40%{transform:translateX(4px)}60%{transform:translateX(-3px)}80%{transform:translateX(2px)}}
+.shake{animation:shakeX .32s ease}
 </style>
 </head>
 <body>
@@ -438,6 +450,7 @@ body{
       <div class="hud-mid">
         <div class="wave-pill"><span id="wave-label">الموجة ١ / ٦</span></div>
         <div class="wave-count" id="wave-count"></div>
+    <button class="call-wave" id="btn-call-wave">استدعِ الموجة <b id="call-bonus">+0</b></button>
       </div>
       <div class="hud-block gold">
         <span class="coin" aria-hidden="true">◈</span>
@@ -517,7 +530,10 @@ body{
   <div class="modal tut-modal">
     <h3 id="tut-title">تعليمات سريعة</h3>
     <p id="tut-text"></p>
-    <div class="modal-actions"><button class="btn btn-primary" id="btn-tut-next">التالي</button></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="btn-tut-next">التالي</button>
+      <button class="btn btn-ghost" id="btn-tut-skip">تخطي التعليم</button>
+    </div>
   </div>
 </div>
 
@@ -3001,6 +3017,23 @@ const UI = (() => {
     if (selectedUnit) hint('اضغط على الأرض لوضع ' + U.name);
   }
 
+  function callBonus() { return 12 + (S ? (S.wave || 0) * 3 : 0); }
+
+  function bindCallWave() {
+    const b = $('#btn-call-wave');
+    if (!b || b._bound) return;
+    b._bound = true;
+    b.onclick = () => {
+      if (!S || S.paused || S.over || S.phase !== 'prep') return;
+      const bonus = callBonus();
+      S.gold += bonus; S.goldEarned += bonus;
+      S.prepT = 0.02;
+      if (save.settings.sfx) AUDIO.sfx.coin();
+      hint(`استدعيت الموجة مبكراً — +◈${bonus}`, 1600);
+      b.classList.remove('on');
+    };
+  }
+
   function updateHud(force) {
     if (!S) return;
     $('#gold-num').textContent = Math.floor(S.gold);
@@ -3008,6 +3041,14 @@ const UI = (() => {
     $('#gate-fill').style.width = Math.max(0, (S.gateHp / S.gateMax) * 100) + '%';
     $('#wave-label').textContent = `الموجة ${toAr(S.wave || 1)} / ${toAr(S.waves)}`;
     const wc = $('#wave-count');
+    const cw = $('#btn-call-wave');
+    if (cw) {
+      bindCallWave();
+      const canCall = S.phase === 'prep' && !S.paused && !S.over && S.prepT > 1.2;
+      cw.classList.toggle('on', canCall);
+      const cb = $('#call-bonus');
+      if (cb) cb.textContent = '+' + callBonus();
+    }
     if (S.phase === 'prep') wc.textContent = `الموجة القادمة بعد ${Math.ceil(S.prepT)} ث`;
     else if (S.phase === 'fight') wc.textContent = `${S.enemies.filter((e) => e.alive).length} على الأرض`;
     else wc.textContent = '';
@@ -3287,6 +3328,7 @@ const UI = (() => {
   // ---------- النتيجة ----------
   function showResult(won) {
     const stars = won ? (S.gateHp / S.gateMax > 0.7 ? 3 : S.gateHp / S.gateMax > 0.35 ? 2 : 1) : 0;
+    const elapsed = Math.max(0, Math.round(S.t || 0));
     save.stats.plays = (save.stats.plays || 0) + 1;
     save.stats.kills = (save.stats.kills || 0) + S.kills;
     if (won) save.stats.wins = (save.stats.wins || 0) + 1;
@@ -3308,7 +3350,8 @@ const UI = (() => {
     $('#result-stats').innerHTML = `
       <li><span>أعداء سقطوا</span><b>${S.kills}</b></li>
       <li><span>ذهب جُمع</span><b>◈ ${S.goldEarned}</b></li>
-      <li><span>قلعة متبقية</span><b>${Math.round((S.gateHp / S.gateMax) * 100)}%</b></li>`;
+      <li><span>قلعة متبقية</span><b>${Math.round((S.gateHp / S.gateMax) * 100)}%</b></li>
+      <li><span>زمن المعركة</span><b>${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}</b></li>`;
     persist();
     checkAch(won, stars);
     if (won && S.levelIdx === 4) { $('#result-sub').textContent = 'تحررت المدينة — أُغلقت الحملة. صمدت الأسوار حتى النهاية.'; }
@@ -3376,6 +3419,7 @@ const UI = (() => {
     $('#btn-about').onclick = () => { AUDIO.sfx.click(); $('#about-overlay').classList.add('open'); };
     $('#btn-ach').onclick = () => { AUDIO.sfx.click(); renderAch(); $('#ach-overlay').classList.add('open'); };
     $('#btn-close-ach').onclick = () => { AUDIO.sfx.click(); $('#ach-overlay').classList.remove('open'); };
+    $('#btn-tut-skip').onclick = () => { AUDIO.sfx.click(); save.tut = 3; persist(); $('#tut-overlay').classList.remove('open'); };
     $('#btn-tut-next').onclick = () => {
       AUDIO.sfx.click();
       $('#tut-overlay').classList.remove('open');
@@ -3433,6 +3477,8 @@ const UI = (() => {
         comboN = 0;
       } else if (ev.type === 'deny') {
         AUDIO.sfx.deny();
+        const g = $('#gold-num');
+        if (g && ev.reason === 'gold') { g.classList.remove('shake'); void g.offsetWidth; g.classList.add('shake'); }
         if (ev.reason === 'limit') hint('أقصى عدد وحدات على الأرض');
       } else if (ev.type === 'hoof') {
         AUDIO.sfx.hoof();
@@ -3452,7 +3498,7 @@ const UI = (() => {
         AUDIO.sfx.gallop(1.8);
       } else if (ev.type === 'end') {
         AUDIO.stopAmbience();
-        setTimeout(() => showResult(ev.won), 900);
+        setTimeout(() => showResult(ev.won), 1500);
       } else if (ev.type === 'place') {
         if (save.settings.sfx) AUDIO.sfx.place();
       }
