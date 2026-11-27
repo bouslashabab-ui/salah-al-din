@@ -665,12 +665,106 @@ const AUDIO = (() => {
     o.connect(g); g.connect(sfxBus); o.start(); o.stop(ctx.currentTime + dur + 0.05);
   }
 
+
+  // ---------- جوّ المعركة: ريح + همس بعيد + صيحات ----------
+  let ambNodes = null, ambTimer = null, hoofLast = 0;
+
+  function startAmbience() {
+    if (!ctx || ambNodes) return;
+    const src = ctx.createBufferSource();
+    const sr = ctx.sampleRate, n = sr * 4;
+    const buf = ctx.createBuffer(1, n, sr);
+    const d = buf.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < n; i++) { const w = Math.random() * 2 - 1; last = last * 0.86 + w * 0.14; d[i] = last; }
+    src.buffer = buf; src.loop = true;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 420; lp.Q.value = 0.4;
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 0.07;
+    const lfoGain = ctx.createGain(); lfoGain.gain.value = 220;
+    lfo.connect(lfoGain); lfoGain.connect(lp.frequency);
+    const g = ctx.createGain(); g.gain.value = 0.0001;
+    src.connect(lp); lp.connect(g); g.connect(master);
+    src.start(); lfo.start();
+    g.gain.linearRampToValueAtTime(0.09, ctx.currentTime + 2.5);
+    ambNodes = { src, lfo, g };
+    ambTimer = setInterval(() => { if (ctx && sfxOn && Math.random() < 0.55) distantCry(); }, 4200);
+  }
+
+  function stopAmbience() {
+    if (ambTimer) { clearInterval(ambTimer); ambTimer = null; }
+    if (!ambNodes) return;
+    const { src, lfo, g } = ambNodes;
+    try {
+      g.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 0.8);
+      setTimeout(() => { try { src.stop(); lfo.stop(); } catch (e) {} }, 900);
+    } catch (e) {}
+    ambNodes = null;
+  }
+
+  function distantCry(vol = 0.05) {
+    if (!ctx || !sfxOn) return;
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator(); o.type = 'sawtooth';
+    const base = 150 + Math.random() * 110;
+    o.frequency.setValueAtTime(base, t);
+    o.frequency.linearRampToValueAtTime(base * (1.15 + Math.random() * 0.3), t + 0.35);
+    o.frequency.linearRampToValueAtTime(base * 0.9, t + 0.9);
+    const f1 = ctx.createBiquadFilter(); f1.type = 'bandpass'; f1.frequency.value = 620 + Math.random() * 300; f1.Q.value = 3.5;
+    const f2 = ctx.createBiquadFilter(); f2.type = 'bandpass'; f2.frequency.value = 1400 + Math.random() * 500; f2.Q.value = 4;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.12);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.1);
+    o.connect(f1); f1.connect(f2); f2.connect(g); g.connect(master);
+    o.start(t); o.stop(t + 1.2);
+  }
+
+  function gallop(dur = 1.6, vol = 0.16) {
+    if (!ctx || !sfxOn) return;
+    const t0 = ctx.currentTime;
+    for (let i = 0; i < dur * 7; i++) {
+      const t = t0 + i * 0.145 + (i % 2) * 0.03;
+      const o = ctx.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(95 - i * 1.5, t);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(vol, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 420;
+      o.connect(lp); lp.connect(g); g.connect(sfxBus);
+      o.start(t); o.stop(t + 0.12);
+      if (i % 2 === 0) {
+        const nz = ctx.createBufferSource();
+        const sr = ctx.sampleRate, n = Math.floor(sr * 0.06);
+        const b = ctx.createBuffer(1, n, sr); const d = b.getChannelData(0);
+        for (let k = 0; k < n; k++) d[k] = (Math.random() * 2 - 1) * (1 - k / n) * 0.5;
+        nz.buffer = b;
+        const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2200; bp.Q.value = 1.4;
+        const ng = ctx.createGain(); ng.gain.value = vol * 0.5;
+        nz.connect(bp); bp.connect(ng); ng.connect(sfxBus);
+        nz.start(t);
+      }
+    }
+  }
+
+  function hoof() {
+    if (!ctx || !sfxOn) return;
+    const now = ctx.currentTime;
+    if (now - hoofLast < 0.12) return;
+    hoofLast = now;
+    const o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(88, now);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.055, now);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.1);
+    o.connect(g); g.connect(sfxBus); o.start(now); o.stop(now + 0.11);
+  }
+
   const sfx = {
     click() { tone(520, 0.07, 'triangle', 0.18, 380); },
     place() { noise(0.18, 'lowpass', 900, 180, 0.5); tone(150, 0.16, 'sine', 0.28, 90); },
     bow() { noise(0.12, 'highpass', 2600, 1200, 0.16, 2); },
     arrowHit() { noise(0.1, 'bandpass', 1800, 700, 0.22, 3); },
-    sword() { noise(0.16, 'bandpass', 3200, 1400, 0.3, 6); tone(2100, 0.1, 'square', 0.05, 1400); },
+    sword() { const v = 0.8 + Math.random() * 0.5; noise(0.16 * v, 'bandpass', 2600 + Math.random() * 1400, 1200, 0.3, 6); tone(1900 + Math.random() * 700, 0.1, 'square', 0.05, 1300); },
     shield() { noise(0.14, 'lowpass', 1400, 400, 0.34); },
     stone() { noise(0.35, 'lowpass', 700, 90, 0.55); tone(70, 0.4, 'sine', 0.4, 42); },
     fire() { noise(0.3, 'bandpass', 1200, 300, 0.3, 0.8); },
@@ -679,6 +773,9 @@ const AUDIO = (() => {
     ability() { tone(280, 0.35, 'sawtooth', 0.16, 900); noise(0.3, 'highpass', 800, 3000, 0.14, 1); },
     volley() { noise(0.5, 'highpass', 500, 2600, 0.3, 1.2); },
     charge() { noise(0.7, 'lowpass', 2000, 200, 0.45); tone(120, 0.5, 'sawtooth', 0.14, 200); },
+    crowd() { distantCry(0.09); setTimeout(() => distantCry(0.06), 260); setTimeout(() => distantCry(0.045), 520); },
+    gallop(d = 1.6) { gallop(d, 0.16); },
+    hoof() { hoof(); },
     victory() { [0, 4, 5, 7, 12].forEach((s, i) => setTimeout(() => playPluck(s, 0, 0.55, 3), i * 170)); },
     defeat() { [7, 5, 4, 0, -3].forEach((s, i) => setTimeout(() => playPluck(s, 0, 0.5, 3), i * 240)); },
     wave() { tone(220, 0.18, 'triangle', 0.2, 300); setTimeout(() => tone(300, 0.22, 'triangle', 0.16, 420), 140); },
@@ -687,6 +784,7 @@ const AUDIO = (() => {
 
   return {
     init, resume, startMusic, stopMusic, sfx,
+    startAmbience, stopAmbience, distantCry,
     setMusic(on) { musicOn = on; if (musicBus) musicBus.gain.value = on ? 0.34 : 0; if (on) startMusic(); else stopMusic(); },
     setSfx(on) { sfxOn = on; if (sfxBus) sfxBus.gain.value = on ? 0.85 : 0; },
     get musicOn() { return musicOn; }, get sfxOn() { return sfxOn; },
@@ -2029,6 +2127,7 @@ const GAME = (() => {
         S.riders.push({ lane, x: GATE_X + 2, mesh, alive: true, walk: 0, hits: new Set() });
       }
       onEvent({ type: 'ability', name });
+      onEvent({ type: 'chargeStart' });
     }
     return true;
   }
@@ -2157,7 +2256,8 @@ const GAME = (() => {
         }
         animUnit(e, dt, 0);
       } else {
-        const sp = E.speed * (e.slowT > 0 ? 0.62 : 1) * (S.rallyT > 0 ? 1 : 1);
+        const sp = E.speed * (e.slowT > 0 ? 0.62 : 1);
+        if ((e.type === 'raider' || e.type === 'boss') && Math.random() < 0.06) onEvent({ type: 'hoof' });
         e.x -= sp * dt;
         e.mesh.position.x = e.x;
         animUnit(e, dt, sp);
@@ -2432,6 +2532,7 @@ const UI = (() => {
     updateHud(true);
     show('battle');
     hint('اختر وحدة من الأسفل ثم اضغط أرضاً فاضية');
+    AUDIO.startAmbience();
     $('#pause-overlay').classList.remove('open');
     S.paused = false;
     lastT = performance.now();
@@ -2689,8 +2790,8 @@ const UI = (() => {
     $('#btn-pause').onclick = () => { if (!S || S.over) return; S.paused = true; $('#pause-overlay').classList.add('open'); };
     $('#btn-resume').onclick = () => { S.paused = false; lastT = performance.now(); $('#pause-overlay').classList.remove('open'); };
     $('#btn-restart').onclick = () => { $('#pause-overlay').classList.remove('open'); startBattle(S.levelIdx); };
-    $('#btn-quit').onclick = () => { $('#pause-overlay').classList.remove('open'); show('levels'); };
-    $('#btn-to-levels').onclick = () => show('levels');
+    $('#btn-quit').onclick = () => { $('#pause-overlay').classList.remove('open'); AUDIO.stopAmbience(); show('levels'); };
+    $('#btn-to-levels').onclick = () => { AUDIO.stopAmbience(); show('levels'); };
 
     document.querySelectorAll('.ability').forEach((b) => {
       b.onclick = () => { AUDIO.resume(); if (GAME.ability(b.dataset.ability)) AUDIO.sfx[b.dataset.ability === 'volley' ? 'volley' : b.dataset.ability === 'rally' ? 'ability' : 'charge'](); };
@@ -2713,13 +2814,15 @@ const UI = (() => {
         AUDIO.sfx.gate();
         if (save.settings.haptic && navigator.vibrate) navigator.vibrate([18, 40, 22]);
       } else if (ev.type === 'wave') {
-        AUDIO.sfx.wave();
+        AUDIO.sfx.wave(); AUDIO.sfx.crowd();
         hint(`الموجة ${toAr(ev.wave)} من ${toAr(ev.total)}`, 2200);
       } else if (ev.type === 'waveClear') {
         hint(`صمدت الموجة — +◈${ev.bonus}`, 2000);
       } else if (ev.type === 'deny') {
         AUDIO.sfx.deny();
         if (ev.reason === 'limit') hint('أقصى عدد وحدات على الأرض');
+      } else if (ev.type === 'hoof') {
+        AUDIO.sfx.hoof();
       } else if (ev.type === 'shoot') {
         if (save.settings.sfx) AUDIO.sfx.bow();
       } else if (ev.type === 'melee') {
@@ -2730,7 +2833,12 @@ const UI = (() => {
         if (save.settings.sfx) AUDIO.sfx.stone();
       } else if (ev.type === 'fireBurst') {
         if (save.settings.sfx) AUDIO.sfx.fire();
+      } else if (ev.type === 'enemyMelee' || ev.type === 'melee') {
+        W3.shake(0.05);
+      } else if (ev.type === 'chargeStart') {
+        AUDIO.sfx.gallop(1.8);
       } else if (ev.type === 'end') {
+        AUDIO.stopAmbience();
         setTimeout(() => showResult(ev.won), 900);
       } else if (ev.type === 'place') {
         if (save.settings.sfx) AUDIO.sfx.place();
@@ -2787,4 +2895,4 @@ window.addEventListener('load', () => UI.boot());
 
 </script>
 </body>
-</html>
+               </html>
