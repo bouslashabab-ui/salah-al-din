@@ -324,6 +324,15 @@ body{
 .dmg.crit{color:#ffd27a;font-size:clamp(14px,1.9vw,21px);text-shadow:0 2px 8px rgba(0,0,0,.95),0 0 16px rgba(255,150,60,.75)}
 .dmg.weak{color:#9fb0c0;font-size:clamp(11px,1.3vw,14px);opacity:.9}
 .dmg.gold{color:#f5d98a;text-shadow:0 2px 8px rgba(0,0,0,.95),0 0 14px rgba(240,190,80,.8)}
+
+/* كارت القصة */
+.modal.story{width:min(520px,94vw);text-align:center}
+.story-year{font-family:var(--font-ui);font-size:12px;letter-spacing:2px;color:var(--gold-lt);opacity:.85}
+.modal.story h3{font-size:clamp(28px,5vw,40px);margin:6px 0 10px}
+.modal.story p{font-size:15px;line-height:1.9;color:rgba(233,220,192,.9)}
+.story-new{margin-top:10px!important;font-size:13px!important;color:var(--gold-lt)!important;border-top:1px solid rgba(201,162,39,.25);padding-top:10px}
+.unit-card.locked{opacity:.4;filter:grayscale(.6)}
+.unit-card.locked .uc-cost{color:rgba(233,220,192,.5)}
 </style>
 </head>
 <body>
@@ -2523,8 +2532,51 @@ const UI = (() => {
     });
   }
 
+
+  // ---------- طبقة الرحلة: كروت القصة وفتح الوحدات ----------
+  const STORY = [
+    { t: 'حطين', y: '٤ يوليو ١١٨٧', txt: 'جيش صلاح الدين يقطع طريق قافلة الفرنجة عند قرون حطين. أول اختبار: صفوف مشاة تحاول فتح ثغرة في السور.', nw: 'عدو جديد: جندي مشاة' },
+    { t: 'عكا', y: '١١٨٩', txt: 'الساحل يشتعل، والحصار يضغط على المدينة. أعداؤك تعلّموا: ترس ثقيل يتقدم في المقدمة ويحمي من ورائه.', nw: 'عدو جديد: حامل الترس + النفّاطون ينضمون' },
+    { t: 'أرسوف', y: '٧ سبتمبر ١١٩١', txt: 'سهل ساحلي مكشوف، وسهام تأتي من بعيد. من يحمي الرماة وراء الصف الأول ينجو.', nw: 'عدو جديد: قوس صليبي + الفرسان يلتحقون' },
+    { t: 'يافا', y: '١١٩٢', txt: 'هجمات سريعة وبرج حصار يزحف ببطء نحو البوابة. الوقت نفسه صار عدواً.', nw: 'عدو جديد: فارس مهاجم + برج الحصار' },
+    { t: 'القدس', y: '٢ أكتوبر ١١٨٧', txt: 'الموجة الأخيرة. قائد الفرنجة نفسه يقود الهجوم على البوابة. هنا تُكتب النهاية.', nw: 'الختام: قائد الفرنجة + المنجنيق بيدك' },
+  ];
+
+  function unlockedUnitCount() {
+    return Math.min(5, 2 + Math.max(0, (save.unlocked || 1) - 1));
+  }
+
+  function showStory(idx, onGo) {
+    const st = STORY[idx] || STORY[0];
+    let ov = document.getElementById('story-overlay');
+    if (!ov) {
+      ov = document.createElement('div');
+      ov.id = 'story-overlay';
+      ov.className = 'overlay';
+      ov.innerHTML = `<div class="modal story">
+        <div class="story-year" id="story-year"></div>
+        <h3 id="story-title"></h3>
+        <p id="story-text"></p>
+        <p class="story-new" id="story-new"></p>
+        <div class="modal-actions"><button class="btn btn-primary" id="story-go">ابدأ المعركة</button></div>
+      </div>`;
+      document.body.appendChild(ov);
+    }
+    document.getElementById('story-year').textContent = st.y;
+    document.getElementById('story-title').textContent = st.t;
+    document.getElementById('story-text').textContent = st.txt;
+    document.getElementById('story-new').textContent = st.nw;
+    ov.classList.add('open');
+    const go = document.getElementById('story-go');
+    go.onclick = () => { ov.classList.remove('open'); AUDIO.sfx.click(); onGo(); };
+  }
+
   // ---------- المعركة ----------
   function startBattle(idx) {
+    showStory(idx, () => doStartBattle(idx));
+  }
+
+  function doStartBattle(idx) {
     AUDIO.resume();
     selectedUnit = null;
     S = GAME.start(idx);
@@ -2543,7 +2595,10 @@ const UI = (() => {
   function buildUnitBar() {
     const bar = $('#unitbar');
     bar.innerHTML = '';
-    Object.entries(GAME.UNITS).forEach(([key, U]) => {
+    const order = ['archer', 'spear', 'naft', 'cav', 'mangonel'];
+    const maxU = unlockedUnitCount();
+    Object.entries(GAME.UNITS).sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0])).forEach(([key, U]) => {
+      const locked = order.indexOf(key) >= maxU;
       const card = document.createElement('button');
       card.className = 'unit-card';
       card.dataset.unit = key;
@@ -2553,13 +2608,21 @@ const UI = (() => {
       const n = document.createElement('span'); n.className = 'uc-name'; n.textContent = U.name;
       const c = document.createElement('span'); c.className = 'uc-cost'; c.textContent = '◈ ' + U.cost;
       card.appendChild(n); card.appendChild(c);
-      card.onclick = () => selectUnit(key);
+      if (locked) {
+        card.classList.add('locked');
+        c.textContent = 'مقفول';
+        card.onclick = () => { AUDIO.sfx.deny(); hint('تُفتح في معركة لاحقة'); };
+      } else {
+        card.onclick = () => selectUnit(key);
+      }
       bar.appendChild(card);
     });
   }
 
   function selectUnit(key) {
     if (!S) return;
+    const ord = ['archer', 'spear', 'naft', 'cav', 'mangonel'];
+    if (ord.indexOf(key) >= unlockedUnitCount()) { AUDIO.sfx.deny(); hint('هذه الوحدة تُفتح في معركة لاحقة'); return; }
     const U = GAME.UNITS[key];
     if (S.gold < U.cost) { AUDIO.sfx.deny(); hint('الذهب لا يكفي — انتظر دخل الخزينة'); return; }
     selectedUnit = selectedUnit === key ? null : key;
@@ -2721,6 +2784,7 @@ const UI = (() => {
       <li><span>أعداء سقطوا</span><b>${S.kills}</b></li>
       <li><span>ذهب جُمع</span><b>◈ ${S.goldEarned}</b></li>
       <li><span>قلعة متبقية</span><b>${Math.round((S.gateHp / S.gateMax) * 100)}%</b></li>`;
+    if (won && S.levelIdx === 4) { $('#result-sub').textContent = 'تحررت المدينة — أُغلقت الحملة. صمدت الأسوار حتى النهاية.'; }
     $('#btn-next').style.display = won && S.levelIdx < 4 ? '' : 'none';
     $('#btn-next').onclick = () => startBattle(S.levelIdx + 1);
     $('#btn-again').onclick = () => startBattle(S.levelIdx);
@@ -2879,7 +2943,7 @@ const UI = (() => {
     raf = requestAnimationFrame(loop);
     // واجهة تشخيص للاختبار الآلي
     window.__SLH = {
-      start: (i) => startBattle(i),
+      start: (i) => { const st = document.getElementById('story-overlay'); if (st) st.classList.remove('open'); doStartBattle(i); },
       place: (t, lane, slot) => { const ok = GAME.place(t, lane, slot); updateHud(); return ok; },
       ability: (n) => GAME.ability(n),
       state: () => GAME.state,
@@ -2897,4 +2961,4 @@ else UI.boot();
 
 </script>
 </body>
-        </html>
+  </html>
