@@ -2891,8 +2891,10 @@ const UI = (() => {
   return { boot, show, startBattle, hint, toAr, get save() { return save; } };
 })();
 
-window.addEventListener('load', () => UI.boot());
+// الموديول قد يتأخر بسبب top-level await، فلا نعتمد على حدث load
+if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', () => UI.boot());
+else UI.boot();
 
 </script>
 </body>
-               </html>
+        </html>
