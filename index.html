@@ -2109,6 +2109,60 @@ const W3 = (() => {
     tail.position.set(-0.74, 1.22, 0); tail.rotation.z = 0.62; g.add(tail);
     const tail2 = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.34, 6), coatDark);
     tail2.position.set(-0.86, 1.02, 0); tail2.rotation.z = 0.9; g.add(tail2);
+    // --- detail pass: head, mane, tack, barding ---
+    const trim = M(0xc9a24a, 0.45, 0.7);
+    const dark = M(0x120d08, 0.5, 0);
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), coat);
+    jaw.position.set(0.86, 1.68, 0); jaw.rotation.z = -0.3; g.add(jaw);
+    for (const z of [-0.1, 0.1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 6), dark);
+      eye.position.set(0.95, 1.79, z); g.add(eye);
+      const nos = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 5), dark);
+      nos.position.set(1.2, 1.72, z * 0.55); g.add(nos);
+    }
+    for (let i = 0; i < 7; i++) {
+      const t = i / 6;
+      const tuft = new THREE.Mesh(new THREE.SphereGeometry(0.075 - t * 0.012, 7, 6), coatDark);
+      tuft.position.set(0.5 + t * 0.36 - 0.12 * (1 - t), 1.62 + t * 0.27, 0.02 * (i % 2 ? 1 : -1));
+      tuft.scale.set(0.8, 1.15, 0.7); g.add(tuft);
+    }
+    // bridle and reins
+    for (const [x, y, rz, len] of [[0.93, 1.77, -0.18, 0.25], [1.07, 1.72, -0.18, 0.2]]) {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(0.03, len, 0.215), leather);
+      b.position.set(x, y, 0); b.rotation.z = rz; g.add(b);
+    }
+    const rein = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.62, 5), leather);
+    rein.position.set(0.9, 1.6, 0.11); rein.rotation.z = 1.15; g.add(rein);
+    // gold-trimmed saddle cloth flaps
+    for (const z of [-0.27, 0.27]) {
+      const flap = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.34, 0.025), cloth);
+      flap.position.set(0.02, 1.08, z); g.add(flap);
+      const hem = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.035, 0.03), trim);
+      hem.position.set(0.02, 0.92, z); g.add(hem);
+      const stir = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.01, 5, 10), trim);
+      stir.position.set(0.04, 0.78, z * 1.1); g.add(stir);
+      const lea = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.3, 0.012), leather);
+      lea.position.set(0.04, 0.95, z * 1.08); g.add(lea);
+    }
+    const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), leather);
+    pommel.position.set(0.22, 1.5, 0); g.add(pommel);
+    const cantle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.15, 0.34), leather);
+    cantle.position.set(-0.16, 1.5, 0); g.add(cantle);
+    // chest strap with ornament, crupper
+    const bp = new THREE.Mesh(new THREE.TorusGeometry(0.27, 0.025, 6, 16), trim);
+    bp.position.set(0.68, 1.15, 0); bp.rotation.y = Math.PI / 2; bp.scale.set(1, 1.05, 1); g.add(bp);
+    const medal = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), trim);
+    medal.position.set(0.9, 1.1, 0); g.add(medal);
+    // hocks and fetlocks
+    for (const [x, z] of [[-0.45, 0.18], [-0.45, -0.18]]) {
+      const hock = new THREE.Mesh(new THREE.SphereGeometry(0.085, 8, 6), coat);
+      hock.position.set(x - 0.03, 0.66, z); g.add(hock);
+    }
+    // flowing tail hair
+    for (let i = 0; i < 3; i++) {
+      const h = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.5, 5), coatDark);
+      h.position.set(-0.9 - i * 0.03, 0.9 - i * 0.04, (i - 1) * 0.05); h.rotation.z = 1.1 + i * 0.08; g.add(h);
+    }
     g.userData.legs = legs;
     return g;
   }
@@ -3863,4 +3917,4 @@ else UI.boot();
 
 </script>
 </body>
-                   </html>
+  </html>
