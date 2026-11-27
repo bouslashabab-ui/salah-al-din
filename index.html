@@ -385,6 +385,17 @@ body{
 .unit-card:active{transform:scale(.96)}
 @keyframes shakeX{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px)}40%{transform:translateX(4px)}60%{transform:translateX(-3px)}80%{transform:translateX(2px)}}
 .shake{animation:shakeX .32s ease}
+
+
+/* ---------- ترقيات داخل الجولة ---------- */
+.upg-bar{display:none;justify-content:center;gap:8px;padding:0 10px 6px;pointer-events:auto}
+.upg-bar.on{display:flex}
+.upg-chip{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:104px;padding:6px 12px;border-radius:10px;border:1px solid rgba(201,162,39,.4);background:linear-gradient(180deg,rgba(26,30,38,.95),rgba(14,17,23,.95));color:var(--parchment);font-family:var(--font-ui);font-size:12px;font-weight:700;cursor:pointer}
+.upg-chip small{font-size:10px;color:rgba(233,220,192,.6);font-weight:500}
+.upg-chip:disabled{opacity:.45;cursor:not-allowed}
+.upg-chip .dots{display:flex;gap:3px;margin-top:2px}
+.upg-chip .dots i{width:6px;height:6px;border-radius:50%;background:rgba(233,220,192,.22)}
+.upg-chip .dots i.on{background:var(--gold)}
 </style>
 </head>
 <body>
@@ -475,6 +486,7 @@ body{
       </button>
     </div>
 
+    <div class="upg-bar" id="upg-bar"></div>
     <div class="unitbar" id="unitbar"></div>
     <div class="hint" id="hint"></div>
     <div class="wave-banner" id="wave-banner"></div>
@@ -2339,6 +2351,7 @@ const GAME = (() => {
       wave: 0, waves: L.waves.length, phase: 'prep', prepT: L.prep,
       enemies: [], units: [], projectiles: [], riders: [],
       goldT: 0, kills: 0, goldEarned: 0, leaked: 0,
+      upg: { archer: { d: 0, r: 0 }, spear: { d: 0, r: 0 }, naft: { d: 0, r: 0 }, cav: { d: 0, r: 0 }, mangonel: { d: 0, r: 0 } },
       cd: { volley: 0, rally: 0, charge: 0 },
       rallyT: 0, speed: 1, paused: false, over: false, won: false,
       spawnQ: [], spawnT: 0, t: 0, lastLane: -1, laneStreak: 0,
@@ -2431,6 +2444,24 @@ const GAME = (() => {
     onEvent({ type: 'place', unit: type, lane, cost: U.cost });
     return true;
   }
+
+  function upgCost(level) { return 70 + level * 65; }
+
+  function upgrade(type, track) {
+    const U = UNITS[type];
+    if (!U || !S || S.over) return false;
+    const cur = (S.upg[type] && S.upg[type][track]) || 0;
+    if (cur >= 4) { onEvent({ type: 'deny', reason: 'maxupg' }); return false; }
+    const cost = upgCost(cur);
+    if (S.gold < cost) { onEvent({ type: 'deny', reason: 'gold' }); return false; }
+    S.gold -= cost;
+    S.upg[type][track] = cur + 1;
+    onEvent({ type: 'upgrade', unit: type, track, level: cur + 1, cost });
+    return true;
+  }
+
+  function dmgMul(type) { const lv = (S.upg[type] && S.upg[type].d) || 0; return 1 + lv * 0.25; }
+  function rateMul(type) { const lv = (S.upg[type] && S.upg[type].r) || 0; return 1 + lv * 0.15; }
 
   function mult(dtype, armor, enemy, fromFront) {
     let m = (MULT[armor] && MULT[armor][dtype]) || 1;
@@ -2570,9 +2601,9 @@ const GAME = (() => {
         if (dx < bestDx) { bestDx = dx; target = e; }
       }
       if (target && bestDx <= U.range && u.cd <= 0) {
-        u.cd = U.interval * (S.rallyT > 0 ? 0.8 : 1);
+        u.cd = (U.interval / rateMul(u.type)) * (S.rallyT > 0 ? 0.8 : 1);
         u.atkAnim = 0.34;
-        const dmg = U.dmg * rallyMul;
+        const dmg = U.dmg * dmgMul(u.type) * rallyMul;
         if (U.cls === 'ranged') {
           launchProjectile(u, target, U, dmg);
         } else {
@@ -2777,7 +2808,7 @@ const GAME = (() => {
   }
 
   return {
-    start, update, place, ability, setEventHandler,
+    start, update, place, ability, upgrade, upgCost, setEventHandler,
     UNITS, ENEMIES, LEVELS, ABILITIES,
     get state() { return S; },
   };
@@ -3014,7 +3045,41 @@ const UI = (() => {
     selectedUnit = selectedUnit === key ? null : key;
     AUDIO.sfx.click();
     document.querySelectorAll('.unit-card').forEach((c) => c.classList.toggle('selected', c.dataset.unit === selectedUnit));
+    renderUpgrades();
     if (selectedUnit) hint('اضغط على الأرض لوضع ' + U.name);
+  }
+
+  function renderUpgrades() {
+    const bar = $('#upg-bar');
+    if (!bar) return;
+    if (!S || !selectedUnit || S.over || current !== 'battle') { bar.classList.remove('on'); return; }
+    const U = GAME.UNITS[selectedUnit];
+    const lv = S.upg[selectedUnit] || { d: 0, r: 0 };
+    bar.classList.add('on');
+    bar.innerHTML = '';
+    const mk = (track, label, extra) => {
+      const level = lv[track] || 0;
+      const b = document.createElement('button');
+      b.className = 'upg-chip';
+      const cost = level >= 4 ? 0 : GAME.upgCost(level);
+      b.disabled = level >= 4 || S.gold < cost;
+      const top = document.createElement('span');
+      top.textContent = level >= 4 ? `${label} — الأقصى` : `${label} · ◈${cost}`;
+      const sm = document.createElement('small');
+      sm.textContent = extra;
+      const dots = document.createElement('span'); dots.className = 'dots';
+      for (let i = 0; i < 4; i++) { const d = document.createElement('i'); if (i < level) d.className = 'on'; dots.appendChild(d); }
+      b.appendChild(top); b.appendChild(sm); b.appendChild(dots);
+      b.onclick = () => {
+        if (!GAME.upgrade(selectedUnit, track)) return;
+        if (save.settings.sfx) AUDIO.sfx.coin();
+        hint(`${U.name}: ${label} — مستوى ${toAr(level + 1)}`, 1500);
+        updateHud(true);
+      };
+      bar.appendChild(b);
+    };
+    mk('d', 'ضرر +٢٥٪', 'لكل مستوى');
+    mk('r', 'سرعة +١٥٪', 'لكل مستوى');
   }
 
   function wavePreview() {
@@ -3082,6 +3147,7 @@ const UI = (() => {
       const U = GAME.UNITS[c.dataset.unit];
       c.classList.toggle('poor', S.gold < U.cost);
     });
+    renderUpgrades();
     document.querySelectorAll('.ability').forEach((b) => {
       const k = b.dataset.ability;
       const A = GAME.ABILITIES[k];
@@ -3573,4 +3639,4 @@ else UI.boot();
 
 </script>
 </body>
-    </html>
+  </html>
