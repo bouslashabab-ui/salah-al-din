@@ -148,6 +148,8 @@ body{
   pointer-events:none;
 }
 .hud-top .btn.pause{pointer-events:auto}
+#btn-cam{margin-inline-end:6px}
+#btn-cam.on{outline:2px solid #d8b45a;box-shadow:0 0 12px rgba(216,180,90,.5)}
 .hud-block{display:flex;align-items:center;gap:8px}
 .hud-label{font-size:11px;letter-spacing:1px;color:rgba(233,220,192,.62)}
 .bar{width:clamp(84px,16vw,190px);height:9px;border-radius:6px;background:rgba(255,255,255,.11);overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,.5)}
@@ -500,6 +502,7 @@ body{
         <span class="hud-num" id="gold-num">180</span>
         <span class="rate" id="gold-rate">+4/ث</span>
       </div>
+      <button class="btn btn-icon pause" id="btn-cam" aria-label="كاميرا" title="كاميرا قريبة">🎥</button>
       <button class="btn btn-icon pause" id="btn-pause" aria-label="إيقاف">❙❙</button>
     </div>
 
@@ -1844,11 +1847,11 @@ const W3 = (() => {
 
   function buildWallCrowd() {
     const g = new THREE.Group();
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < 20; i++) {
       const kind = i % 3 === 0 ? 'archer' : 'spear';
       const u = buildUnitMesh(kind);
       u.scale.multiplyScalar(0.82);
-      u.position.set(GATE_X - 1.2, 8.6, -20 + i * 5);
+      u.position.set(GATE_X - 1.2 - (i % 2) * 1.1, 8.6, -21 + i * 2.2);
       u.rotation.y = Math.PI / 2 + (Math.random() - 0.5) * 0.5;
       g.add(u);
     }
@@ -2074,11 +2077,11 @@ const W3 = (() => {
     const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.22, 0.66, 10), coat);
     neck.position.set(0.63, 1.5, 0); neck.rotation.z = -0.55; neck.castShadow = true;
     g.add(neck);
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.21, 0.19), coat);
-    head.position.set(0.92, 1.76, 0); head.rotation.z = -0.18; head.castShadow = true;
+    const head = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.125, 0.4, 10), coat);
+    head.scale.set(1, 1, 0.85); head.position.set(0.95, 1.74, 0); head.rotation.z = Math.PI / 2 - 0.5; head.castShadow = true;
     g.add(head);
-    const muzzle = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.15), coat);
-    muzzle.position.set(1.11, 1.7, 0); muzzle.rotation.z = -0.18; g.add(muzzle);
+    const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.085, 10, 8), coat);
+    muzzle.scale.set(1.15, 0.9, 0.9); muzzle.position.set(1.14, 1.64, 0); g.add(muzzle);
     for (const z of [-0.06, 0.06]) {
       const ear = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.11, 5), coatDark);
       ear.position.set(0.79, 1.9, z); ear.rotation.z = -0.25; g.add(ear);
@@ -2164,6 +2167,7 @@ const W3 = (() => {
       h.position.set(-0.9 - i * 0.03, 0.9 - i * 0.04, (i - 1) * 0.05); h.rotation.z = 1.1 + i * 0.08; g.add(h);
     }
     g.userData.legs = legs;
+    g.userData.tailG = [tail, tail2];
     return g;
   }
 
@@ -2323,8 +2327,11 @@ const W3 = (() => {
     shakeAmt = Math.min(0.9, shakeAmt + amount);
   }
 
+  let camClose = false, lastWH = [0, 0];
+  function setCamClose(v) { camClose = !!v; if (lastWH[0]) resize(lastWH[0], lastWH[1]); }
   function resize(w, h) {
     if (!renderer) return;
+    lastWH = [w, h];
     renderer.setSize(w, h, false);
     const aspect = w / h;
     camera.aspect = aspect;
@@ -2334,7 +2341,8 @@ const W3 = (() => {
     let dist = halfH / Math.tan(vfov / 2);
     dist = Math.min(dist, 96);
     targetX = aspect < 1.05 ? -9 : -4;
-    const dir = new THREE.Vector3(0.30, 0.52, 0.80).normalize();
+    const dir = camClose ? new THREE.Vector3(0.34, 0.30, 0.80).normalize() : new THREE.Vector3(0.30, 0.52, 0.80).normalize();
+    if (camClose) dist *= 0.66;
     camera.position.copy(new THREE.Vector3(targetX, 3.2, 0)).add(dir.multiplyScalar(dist * 1.02));
     camera.lookAt(targetX - 1.5, 3.0, 0.5);
     camera.updateProjectionMatrix();
@@ -2395,7 +2403,7 @@ const W3 = (() => {
   }
 
   return {
-    init, resize, update, render, buildUnitMesh, glowAt, shake,
+    init, resize, update, render, buildUnitMesh, glowAt, shake, setCamClose,
     LANE_Z, SLOT_X, GATE_X, SPAWN_X,
     get scene() { return scene; }, get camera() { return camera; }, get renderer() { return renderer; },
   };
@@ -2934,13 +2942,24 @@ const GAME = (() => {
         const base = o.atkAnim > 0 ? -1.5 * Math.sin((o.atkAnim / 0.34) * Math.PI) : 0;
         parts.armR.rotation.x = base + Math.sin(o.walk) * swing * 0.4;
       }
-      if (parts.torso) parts.torso.position.y = Math.abs(Math.sin(o.walk)) * 0.03;
+      if (parts.torso) {
+        parts.torso.position.y = Math.abs(Math.sin(o.walk)) * (speed > 0.1 ? 0.06 : 0.015);
+        parts.torso.rotation.y = Math.sin(o.walk) * (speed > 0.1 ? 0.12 : 0.02);
+        parts.torso.rotation.z = Math.sin(o.walk * 0.5) * (speed > 0.1 ? 0.04 : 0.01);
+      }
+      if (parts.head) parts.head.rotation.y = Math.sin(o.walk * 0.5 + 1) * (speed > 0.1 ? 0.05 : 0.12);
     }
     if (horse && horse.userData.legs) {
+      const mv = speed > 0.1;
+      const ph = o.walk * (mv ? 1.7 : 0.6), amp = mv ? 0.75 : 0.08;
+      // legs are listed FL, FR, BL, BR: gallop = fronts nearly together, backs together, offset
+      const offs = [0, 0.5, 2.6, 3.1];
       horse.userData.legs.forEach((leg, i) => {
-        leg.rotation.x = Math.sin(o.walk * 1.3 + (i % 2 ? Math.PI : 0)) * 0.5;
+        leg.rotation.x = Math.sin(ph + offs[i]) * amp;
       });
-      horse.position.y = Math.abs(Math.sin(o.walk * 1.3)) * 0.06;
+      horse.position.y = mv ? Math.abs(Math.sin(ph + 0.8)) * 0.14 : Math.sin(o.walk * 0.6) * 0.012;
+      horse.rotation.z = mv ? Math.sin(ph + 0.4) * 0.05 : 0;
+      if (horse.userData.tailG) horse.userData.tailG.forEach((t, i) => { t.rotation.y = Math.sin(ph * 0.8 + i) * (mv ? 0.35 : 0.08); });
     }
     if (o.atkAnim > 0) o.atkAnim = Math.max(0, o.atkAnim - dt);
     if (mesh.userData.kind === 'mangonel' || mesh.userData.kind === 'siege' || mesh.userData.kind === 'ram') {
@@ -3790,6 +3809,8 @@ const UI = (() => {
     $('#btn-close-about').onclick = () => $('#about-overlay').classList.remove('open');
     document.querySelectorAll('[data-back]').forEach((b) => b.onclick = () => { AUDIO.sfx.click(); show(b.dataset.back); });
 
+    $('#btn-cam').onclick = () => { save.settings.cam = !save.settings.cam; W3.setCamClose(save.settings.cam); $('#btn-cam').classList.toggle('on', !!save.settings.cam); persist && persist(); };
+    W3.setCamClose(!!save.settings.cam); $('#btn-cam').classList.toggle('on', !!save.settings.cam);
     $('#btn-pause').onclick = () => { if (!S || S.over) return; S.paused = true; $('#pause-overlay').classList.add('open'); };
     $('#btn-resume').onclick = () => { S.paused = false; lastT = performance.now(); $('#pause-overlay').classList.remove('open'); };
     $('#btn-restart').onclick = () => { $('#pause-overlay').classList.remove('open'); startBattle(S.levelIdx); };
