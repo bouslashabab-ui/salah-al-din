@@ -359,11 +359,26 @@ body{
 .ach-toast span{font-size:14px;font-weight:700;color:var(--parchment)}
 .tut-modal{width:min(420px,92vw)}
 .tut-modal p{font-size:15px;line-height:1.8}
+
+
+/* ---------- لمسات القتال ---------- */
+.hurt-flash{position:fixed;inset:0;pointer-events:none;z-index:5;opacity:0;background:radial-gradient(120% 100% at 50% 50%,rgba(140,20,14,0) 45%,rgba(150,22,16,.55) 100%);transition:opacity .35s ease}
+.hurt-flash.on{opacity:1;transition:opacity .06s ease}
+.wave-banner{position:fixed;left:50%;top:26%;transform:translate(-50%,-12px) scale(.96);z-index:6;pointer-events:none;opacity:0;transition:opacity .3s ease,transform .3s ease;padding:10px 26px;border-radius:12px;background:linear-gradient(180deg,rgba(20,24,32,.9),rgba(10,13,18,.9));border:1px solid rgba(201,162,39,.5);box-shadow:0 16px 40px rgba(0,0,0,.5);font-family:var(--font-display);font-size:clamp(20px,2.4vw,30px);color:var(--gold-lt);text-align:center;white-space:nowrap}
+.wave-banner.show{opacity:1;transform:translate(-50%,0) scale(1)}
+.boss-bar{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top) + 62px);z-index:6;width:min(420px,64vw);display:none;flex-direction:column;gap:5px;pointer-events:none}
+.boss-bar.on{display:flex}
+.boss-bar span{font-size:12px;letter-spacing:.3px;color:#f0cf7a;text-align:center;text-shadow:0 2px 6px rgba(0,0,0,.7)}
+.boss-bar i{display:block;height:9px;border-radius:6px;background:rgba(0,0,0,.55);border:1px solid rgba(201,162,39,.5);overflow:hidden}
+.boss-bar b{display:block;height:100%;width:100%;background:linear-gradient(90deg,#8d3126,#e0a13a);transition:width .18s linear}
+.combo{position:fixed;left:50%;top:44%;transform:translate(-50%,-50%);z-index:6;pointer-events:none;font-family:var(--font-display);font-size:clamp(24px,3.2vw,40px);color:#f5e2a8;text-shadow:0 4px 18px rgba(0,0,0,.7),0 0 22px rgba(201,162,39,.55);opacity:0;transition:opacity .2s ease,transform .2s ease}
+.combo.show{opacity:1;transform:translate(-50%,-50%) scale(1.06)}
 </style>
 </head>
 <body>
 
 <canvas id="game"></canvas>
+<div class="hurt-flash" id="hurt-flash"></div>
 
 <!-- ===== شاشة البداية ===== -->
 <section id="screen-title" class="screen active">
@@ -449,6 +464,8 @@ body{
 
     <div class="unitbar" id="unitbar"></div>
     <div class="hint" id="hint"></div>
+    <div class="wave-banner" id="wave-banner"></div>
+    <div class="boss-bar" id="boss-bar"><span>قائد الفرنجة</span><i><b id="boss-fill"></b></i></div>
     <div class="vignette" aria-hidden="true"></div>
   </div>
 
@@ -2938,6 +2955,8 @@ const UI = (() => {
     $('#pause-overlay').classList.remove('open');
     S.paused = false;
     lastT = performance.now();
+    comboN = 0;
+    const bb0 = $('#boss-bar'); if (bb0) bb0.classList.remove('on');
     if ((save.tut || 0) < 3) { save.tut = Math.max(1, save.tut || 1); persist(); setTimeout(tutShow, 700); }
   }
 
@@ -2992,6 +3011,15 @@ const UI = (() => {
     if (S.phase === 'prep') wc.textContent = `الموجة القادمة بعد ${Math.ceil(S.prepT)} ث`;
     else if (S.phase === 'fight') wc.textContent = `${S.enemies.filter((e) => e.alive).length} على الأرض`;
     else wc.textContent = '';
+    const bb = $('#boss-bar');
+    if (bb) {
+      const boss = S.enemies.find((e) => e.alive && e.type === 'boss');
+      if (boss) {
+        bb.classList.add('on');
+        const f = $('#boss-fill');
+        if (f) f.style.width = Math.max(0, Math.min(100, (boss.hp / (boss.maxHp || 1800)) * 100)) + '%';
+      } else bb.classList.remove('on');
+    }
     document.querySelectorAll('.unit-card').forEach((c) => {
       const U = GAME.UNITS[c.dataset.unit];
       c.classList.toggle('poor', S.gold < U.cost);
@@ -3221,6 +3249,41 @@ const UI = (() => {
     if (i > (save.tut || 0)) { save.tut = i; persist(); if (i <= 3) tutShow(); }
   }
 
+  // ---------- لمسات القتال: كومبو، لافتة موجة، وميض إصابة ----------
+  let comboN = 0, comboT = 0, comboTimer = null;
+  function comboKill() {
+    comboN++;
+    comboT = 3;
+    clearTimeout(comboTimer);
+    comboTimer = setTimeout(() => { comboN = 0; }, 3000);
+    if (comboN >= 3) {
+      let el = document.getElementById('combo-chip');
+      if (!el) { el = document.createElement('div'); el.id = 'combo-chip'; el.className = 'combo'; document.body.appendChild(el); }
+      el.textContent = `كومبو ×${toAr(comboN)}`;
+      el.classList.add('show');
+      clearTimeout(el._h);
+      el._h = setTimeout(() => el.classList.remove('show'), 900);
+      if (comboN % 5 === 0 && S) { S.gold += 15; S.goldEarned += 15; if (save.settings.sfx) AUDIO.sfx.coin(); }
+    }
+  }
+
+  function waveBanner(text, ms) {
+    const b = $('#wave-banner');
+    if (!b) return;
+    b.textContent = text;
+    b.classList.add('show');
+    clearTimeout(b._h);
+    b._h = setTimeout(() => b.classList.remove('show'), ms || 1900);
+  }
+
+  function hurtFlash() {
+    const f = $('#hurt-flash');
+    if (!f) return;
+    f.classList.add('on');
+    clearTimeout(f._h);
+    f._h = setTimeout(() => f.classList.remove('on'), 110);
+  }
+
   // ---------- النتيجة ----------
   function showResult(won) {
     const stars = won ? (S.gateHp / S.gateMax > 0.7 ? 3 : S.gateHp / S.gateMax > 0.35 ? 2 : 1) : 0;
@@ -3355,14 +3418,19 @@ const UI = (() => {
       } else if (ev.type === 'kill') {
         floatAt(ev.enemy.x, 2.4, W3.LANE_Z[ev.enemy.lane], '+' + ev.gold, 'gold');
         if (save.settings.sfx) AUDIO.sfx.coin();
+        comboKill();
       } else if (ev.type === 'gate') {
         AUDIO.sfx.gate();
+        hurtFlash();
         if (save.settings.haptic && navigator.vibrate) navigator.vibrate([18, 40, 22]);
       } else if (ev.type === 'wave') {
         AUDIO.sfx.wave(); AUDIO.sfx.crowd();
         hint(`الموجة ${toAr(ev.wave)} من ${toAr(ev.total)}`, 2200);
+        waveBanner(`الموجة ${toAr(ev.wave)} من ${toAr(ev.total)}`, 1700);
       } else if (ev.type === 'waveClear') {
         hint(`صمدت الموجة — +◈${ev.bonus}`, 2000);
+        waveBanner(`صُدّت الموجة ${toAr(ev.wave)} · +◈${ev.bonus}`, 2000);
+        comboN = 0;
       } else if (ev.type === 'deny') {
         AUDIO.sfx.deny();
         if (ev.reason === 'limit') hint('أقصى عدد وحدات على الأرض');
