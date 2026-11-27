@@ -396,6 +396,21 @@ body{
 .upg-chip .dots{display:flex;gap:3px;margin-top:2px}
 .upg-chip .dots i{width:6px;height:6px;border-radius:50%;background:rgba(233,220,192,.22)}
 .upg-chip .dots i.on{background:var(--gold)}
+
+
+/* ---------- ترقيات المعسكر (دائمة) ---------- */
+.meta-line{font-size:13px;color:rgba(233,220,192,.8)}
+.meta-line b{color:var(--gold-lt);font-size:16px}
+.meta-list{list-style:none;margin:0;padding:0;display:grid;gap:9px}
+.meta-item{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.035);border:1px solid rgba(233,220,192,.10)}
+.meta-item .mi-txt{display:flex;flex-direction:column;gap:3px;flex:1;text-align:start}
+.meta-item .mi-txt b{font-size:14px}
+.meta-item .mi-txt small{font-size:11px;color:rgba(233,220,192,.6)}
+.meta-item .mi-dots{display:flex;gap:3px}
+.meta-item .mi-dots i{width:7px;height:7px;border-radius:50%;background:rgba(233,220,192,.18)}
+.meta-item .mi-dots i.on{background:var(--gold)}
+.meta-buy{min-width:86px;padding:8px 10px;border-radius:9px;border:1px solid rgba(201,162,39,.45);background:linear-gradient(180deg,rgba(201,162,39,.22),rgba(201,162,39,.06));color:var(--parchment);font-family:var(--font-ui);font-size:12px;font-weight:700;cursor:pointer}
+.meta-buy:disabled{opacity:.4;cursor:not-allowed}
 </style>
 </head>
 <body>
@@ -427,6 +442,7 @@ body{
       <button class="btn" id="btn-levels">اختر معركة</button>
       <div class="title-row">
         <button class="btn btn-ghost" id="btn-ach">الإنجازات</button>
+        <button class="btn btn-ghost" id="btn-meta">ترقيات المعسكر</button>
         <button class="btn btn-ghost" id="btn-settings">الإعدادات</button>
         <button class="btn btn-ghost" id="btn-about">عن اللعبة</button>
       </div>
@@ -525,6 +541,18 @@ body{
 </section>
 
 <!-- ===== الإعدادات ===== -->
+<div class="overlay" id="meta-overlay">
+  <div class="modal modal-wide">
+    <h3>ترقيات المعسكر</h3>
+    <p class="meta-line">نقاط المجد: <b id="meta-pts">0</b> — تُكسب من كل معركة وتُصرف هنا، وتبقى معك بين المعارك.</p>
+    <ul class="meta-list" id="meta-list"></ul>
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="btn-close-meta">تم</button>
+      <button class="btn btn-ghost" id="btn-reset-meta">إعادة توزيع النقاط (مجاناً)</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="ach-overlay">
   <div class="modal modal-wide">
     <h3>الإنجازات</h3>
@@ -2358,7 +2386,7 @@ const GAME = (() => {
     };
   }
 
-  function start(levelIdx) {
+  function start(levelIdx, meta) {
     // تنظيف المشهد من أي وحدات سابقة
     if (S) {
       for (const u of S.units) u.mesh && u.mesh.parent && u.mesh.parent.remove(u.mesh);
@@ -2367,6 +2395,11 @@ const GAME = (() => {
       for (const r of S.riders) r.mesh && r.mesh.parent && r.mesh.parent.remove(r.mesh);
     }
     S = newState(levelIdx);
+    S.meta = meta || { dmg: 0, rate: 0, gate: 0, gold: 0 };
+    if (S.meta.gate) {
+      const g = Math.round(S.level.gate * (1 + 0.05 * S.meta.gate));
+      S.gateMax = g; S.gateHp = g;
+    }
     onEvent({ type: 'start', state: S });
     return S;
   }
@@ -2460,8 +2493,16 @@ const GAME = (() => {
     return true;
   }
 
-  function dmgMul(type) { const lv = (S.upg[type] && S.upg[type].d) || 0; return 1 + lv * 0.25; }
-  function rateMul(type) { const lv = (S.upg[type] && S.upg[type].r) || 0; return 1 + lv * 0.15; }
+  function dmgMul(type) {
+    const lv = (S.upg[type] && S.upg[type].d) || 0;
+    const meta = (S.meta && S.meta.dmg) || 0;
+    return (1 + lv * 0.25) * (1 + meta * 0.04);
+  }
+  function rateMul(type) {
+    const lv = (S.upg[type] && S.upg[type].r) || 0;
+    const meta = (S.meta && S.meta.rate) || 0;
+    return (1 + lv * 0.15) * (1 + meta * 0.03);
+  }
 
   function mult(dtype, armor, enemy, fromFront) {
     let m = (MULT[armor] && MULT[armor][dtype]) || 1;
@@ -2557,7 +2598,7 @@ const GAME = (() => {
     S.t += dt;
     // اقتصاد
     S.goldT += dt;
-    while (S.goldT >= 1) { S.goldT -= 1; S.gold += 4; }
+    while (S.goldT >= 1) { S.goldT -= 1; S.gold += 4 * (1 + ((S.meta && S.meta.gold) || 0) * 0.04); }
     // أكواد القدرات
     for (const k in S.cd) if (S.cd[k] > 0) S.cd[k] = Math.max(0, S.cd[k] - dt);
     if (S.rallyT > 0) S.rallyT = Math.max(0, S.rallyT - dt);
@@ -2824,7 +2865,8 @@ const UI = (() => {
   const el = {};
   const SAVE_KEY = 'salahaldin.save.v1';
   let save = { unlocked: 1, stars: Array(5).fill(0), settings: { music: true, sfx: true, haptic: true, speed: 1 },
-    ach: {}, stats: { kills: 0, wins: 0, plays: 0, abilities: 0 }, tut: 0 };
+    ach: {}, stats: { kills: 0, wins: 0, plays: 0, abilities: 0 }, tut: 0,
+    meta: { pts: 0, dmg: 0, rate: 0, gate: 0, gold: 0 } };
   let canvas, current = 'title';
   let selectedUnit = null;
   let lastT = 0, raf = 0;
@@ -2844,6 +2886,7 @@ const UI = (() => {
         save.ach = Object.assign({}, s.ach || {});
         save.stats = Object.assign({ kills: 0, wins: 0, plays: 0, abilities: 0 }, s.stats || {});
         save.tut = s.tut || 0;
+        save.meta = Object.assign({ pts: 0, dmg: 0, rate: 0, gate: 0, gold: 0 }, s.meta || {});
       }
     } catch (e) { /* تجاهل */ }
   }
@@ -2993,7 +3036,7 @@ const UI = (() => {
   function doStartBattle(idx) {
     AUDIO.resume();
     selectedUnit = null;
-    S = GAME.start(idx);
+    S = GAME.start(idx, save.meta);
     buildUnitBar();
     updateHud(true);
     show('battle');
@@ -3267,6 +3310,49 @@ const UI = (() => {
   }
 
 
+  // ---------- ترقيات المعسكر (دائمة) ----------
+  const META = [
+    { k: 'dmg', name: 'حدّ السيوف', desc: '+٤٪ ضرر لكل الوحدات لكل مستوى', max: 8 },
+    { k: 'rate', name: 'سرعة التدريب', desc: '+٣٪ سرعة هجوم لكل الوحدات لكل مستوى', max: 8 },
+    { k: 'gate', name: 'تقوية الأسوار', desc: '+٥٪ صحة البوابة لكل مستوى', max: 6 },
+    { k: 'gold', name: 'خزينة المدينة', desc: '+٤٪ دخل الذهب لكل مستوى', max: 6 },
+  ];
+
+  function metaCost(level) { return 1 + Math.floor(level / 3); }
+
+  function renderMeta() {
+    const list = $('#meta-list');
+    if (!list) return;
+    $('#meta-pts').textContent = toAr(save.meta.pts || 0);
+    list.innerHTML = '';
+    META.forEach((m) => {
+      const lv = save.meta[m.k] || 0;
+      const li = document.createElement('li');
+      li.className = 'meta-item';
+      const tx = document.createElement('span'); tx.className = 'mi-txt';
+      const b = document.createElement('b'); b.textContent = m.name;
+      const sm = document.createElement('small'); sm.textContent = `${m.desc} · المستوى ${toAr(lv)}/${toAr(m.max)}`;
+      tx.appendChild(b); tx.appendChild(sm);
+      const dots = document.createElement('span'); dots.className = 'mi-dots';
+      for (let i = 0; i < m.max; i++) { const d = document.createElement('i'); if (i < lv) d.className = 'on'; dots.appendChild(d); }
+      const btn = document.createElement('button');
+      btn.className = 'meta-buy';
+      if (lv >= m.max) { btn.textContent = 'مكتمل'; btn.disabled = true; }
+      else {
+        const cost = metaCost(lv);
+        btn.textContent = `ترقية · ${toAr(cost)} نقطة`;
+        btn.disabled = (save.meta.pts || 0) < cost;
+        btn.onclick = () => {
+          if ((save.meta.pts || 0) < cost) return;
+          save.meta.pts -= cost; save.meta[m.k] = lv + 1; persist();
+          AUDIO.sfx.click(); renderMeta();
+        };
+      }
+      li.appendChild(tx); li.appendChild(dots); li.appendChild(btn);
+      list.appendChild(li);
+    });
+  }
+
   // ---------- الإنجازات والرتبة ----------
   const ACH = [
     { id: 'first_win', name: 'أول انتصار', desc: 'اكسب أول معركة', icon: '⚔' },
@@ -3434,7 +3520,10 @@ const UI = (() => {
       <li><span>أعداء سقطوا</span><b>${S.kills}</b></li>
       <li><span>ذهب جُمع</span><b>◈ ${S.goldEarned}</b></li>
       <li><span>قلعة متبقية</span><b>${Math.round((S.gateHp / S.gateMax) * 100)}%</b></li>
-      <li><span>زمن المعركة</span><b>${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}</b></li>`;
+      <li><span>زمن المعركة</span><b>${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}</b></li>
+      <li><span>نقاط المجد</span><b>+${glory}</b></li>`;
+    const glory = won ? 3 + stars : Math.max(1, Math.floor((S.wave || 0) / 2));
+    save.meta.pts = (save.meta.pts || 0) + glory;
     persist();
     checkAch(won, stars);
     if (won && S.levelIdx === 4) { $('#result-sub').textContent = 'تحررت المدينة — أُغلقت الحملة. صمدت الأسوار حتى النهاية.'; }
@@ -3501,6 +3590,14 @@ const UI = (() => {
     $('#btn-settings').onclick = () => { AUDIO.sfx.click(); $('#settings-overlay').classList.add('open'); };
     $('#btn-about').onclick = () => { AUDIO.sfx.click(); $('#about-overlay').classList.add('open'); };
     $('#btn-ach').onclick = () => { AUDIO.sfx.click(); renderAch(); $('#ach-overlay').classList.add('open'); };
+    $('#btn-meta').onclick = () => { AUDIO.sfx.click(); renderMeta(); $('#meta-overlay').classList.add('open'); };
+    $('#btn-close-meta').onclick = () => { AUDIO.sfx.click(); $('#meta-overlay').classList.remove('open'); };
+    $('#btn-reset-meta').onclick = () => {
+      let refund = 0;
+      META.forEach((m) => { const lv = save.meta[m.k] || 0; for (let i = 0; i < lv; i++) refund += metaCost(i); save.meta[m.k] = 0; });
+      save.meta.pts = (save.meta.pts || 0) + refund;
+      persist(); renderMeta(); AUDIO.sfx.click();
+    };
     $('#btn-close-ach').onclick = () => { AUDIO.sfx.click(); $('#ach-overlay').classList.remove('open'); };
     $('#btn-tut-skip').onclick = () => { AUDIO.sfx.click(); save.tut = 3; persist(); $('#tut-overlay').classList.remove('open'); };
     $('#btn-tut-next').onclick = () => {
@@ -3626,7 +3723,7 @@ const UI = (() => {
       ability: (n) => GAME.ability(n),
       state: () => GAME.state,
       step: (seconds) => { const n = Math.round(seconds / 0.05); for (let i = 0; i < n; i++) GAME.update(0.05); updateHud(); },
-      save, show, GAME, UI, world: W3, post: POST, ACH, renderAch, tutShow,
+      save, show, GAME, UI, world: W3, post: POST, ACH, renderAch, tutShow, renderMeta,
     };
   }
 
@@ -3639,4 +3736,4 @@ else UI.boot();
 
 </script>
 </body>
-         </html>
+  </html>
