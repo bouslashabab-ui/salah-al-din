@@ -411,6 +411,22 @@ body{
 .meta-item .mi-dots i.on{background:var(--gold)}
 .meta-buy{min-width:86px;padding:8px 10px;border-radius:9px;border:1px solid rgba(201,162,39,.45);background:linear-gradient(180deg,rgba(201,162,39,.22),rgba(201,162,39,.06));color:var(--parchment);font-family:var(--font-ui);font-size:12px;font-weight:700;cursor:pointer}
 .meta-buy:disabled{opacity:.4;cursor:not-allowed}
+
+
+/* ---------- التحديات اليومية ---------- */
+.daily-box{margin:0 0 14px;padding:11px 12px;border-radius:11px;background:linear-gradient(180deg,rgba(60,80,120,.18),rgba(20,26,36,.18));border:1px solid rgba(147,160,173,.25)}
+.daily-head{display:flex;align-items:baseline;gap:8px;margin-bottom:8px}
+.daily-head b{font-family:var(--font-display);font-size:17px;color:var(--parchment)}
+.daily-head span{font-size:11px;color:rgba(233,220,192,.55);margin-inline-start:auto}
+.daily-list{list-style:none;margin:0;padding:0;display:grid;gap:7px}
+.daily-item{display:flex;align-items:center;gap:10px;font-size:13px}
+.daily-item .d-txt{flex:1;display:flex;flex-direction:column;gap:4px;text-align:start}
+.daily-item .d-bar{height:6px;border-radius:4px;background:rgba(0,0,0,.4);overflow:hidden}
+.daily-item .d-bar i{display:block;height:100%;background:linear-gradient(90deg,#8a6a18,#e8c96f);transition:width .2s ease}
+.daily-item .d-num{font-size:11px;color:rgba(233,220,192,.65)}
+.daily-claim{min-width:74px;padding:6px 10px;border-radius:8px;border:1px solid rgba(201,162,39,.45);background:rgba(201,162,39,.14);color:var(--gold-lt);font-family:var(--font-ui);font-size:11px;font-weight:700;cursor:pointer}
+.daily-claim:disabled{opacity:.45;cursor:not-allowed}
+.daily-claim.done{border-color:rgba(95,158,106,.6);background:rgba(95,158,106,.16);color:#a8d8b2}
 </style>
 </head>
 <body>
@@ -556,6 +572,10 @@ body{
 <div class="overlay" id="ach-overlay">
   <div class="modal modal-wide">
     <h3>الإنجازات</h3>
+    <div class="daily-box">
+      <div class="daily-head"><b>تحديات اليوم</b><span id="daily-reset"></span></div>
+      <ul class="daily-list" id="daily-list"></ul>
+    </div>
     <div class="rank-box">
       <span class="rank-label">رتبتك</span>
       <b id="ach-rank">مبتدئ</b>
@@ -2866,7 +2886,8 @@ const UI = (() => {
   const SAVE_KEY = 'salahaldin.save.v1';
   let save = { unlocked: 1, stars: Array(5).fill(0), settings: { music: true, sfx: true, haptic: true, speed: 1 },
     ach: {}, stats: { kills: 0, wins: 0, plays: 0, abilities: 0 }, tut: 0,
-    meta: { pts: 0, dmg: 0, rate: 0, gate: 0, gold: 0 } };
+    meta: { pts: 0, dmg: 0, rate: 0, gate: 0, gold: 0 },
+    daily: { date: '', kills: 0, wins: 0, abilities: 0, claimed: {} } };
   let canvas, current = 'title';
   let selectedUnit = null;
   let lastT = 0, raf = 0;
@@ -2887,6 +2908,7 @@ const UI = (() => {
         save.stats = Object.assign({ kills: 0, wins: 0, plays: 0, abilities: 0 }, s.stats || {});
         save.tut = s.tut || 0;
         save.meta = Object.assign({ pts: 0, dmg: 0, rate: 0, gate: 0, gold: 0 }, s.meta || {});
+        save.daily = Object.assign({ date: '', kills: 0, wins: 0, abilities: 0, claimed: {} }, s.daily || {});
       }
     } catch (e) { /* تجاهل */ }
   }
@@ -3310,6 +3332,73 @@ const UI = (() => {
   }
 
 
+  // ---------- التحديات اليومية ----------
+  function todayKey() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  function dailyTargets() {
+    const key = todayKey();
+    let h = 0;
+    for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) % 9973;
+    return { kills: 40 + (h % 4) * 10, wins: 1 + (h % 3 === 0 ? 1 : 0), abilities: 6 + (h % 3) * 2 };
+  }
+
+  function ensureDaily() {
+    const key = todayKey();
+    if (!save.daily || save.daily.date !== key) {
+      save.daily = { date: key, kills: 0, wins: 0, abilities: 0, claimed: {} };
+      persist();
+    }
+  }
+
+  function renderDaily() {
+    const list = $('#daily-list');
+    if (!list) return;
+    ensureDaily();
+    const t = dailyTargets();
+    const d = save.daily;
+    const rows = [
+      { k: 'kills', label: `أسقط ${toAr(t.kills)} عدواً اليوم`, val: d.kills || 0, target: t.kills },
+      { k: 'wins', label: `اكسب ${toAr(t.wins)} ${t.wins > 1 ? 'معركتين' : 'معركة'} اليوم`, val: d.wins || 0, target: t.wins },
+      { k: 'abilities', label: `استخدم ${toAr(t.abilities)} قدرات اليوم`, val: d.abilities || 0, target: t.abilities },
+    ];
+    list.innerHTML = '';
+    rows.forEach((r) => {
+      const li = document.createElement('li'); li.className = 'daily-item';
+      const tx = document.createElement('span'); tx.className = 'd-txt';
+      const lab = document.createElement('span'); lab.textContent = r.label;
+      const bar = document.createElement('span'); bar.className = 'd-bar';
+      const fill = document.createElement('i');
+      fill.style.width = Math.min(100, (r.val / r.target) * 100) + '%';
+      bar.appendChild(fill);
+      const num = document.createElement('span'); num.className = 'd-num';
+      num.textContent = `${toAr(Math.min(r.val, r.target))} / ${toAr(r.target)}`;
+      tx.appendChild(lab); tx.appendChild(bar); tx.appendChild(num);
+      const btn = document.createElement('button');
+      btn.className = 'daily-claim';
+      const claimed = !!(d.claimed && d.claimed[r.k]);
+      const done = r.val >= r.target;
+      if (claimed) { btn.textContent = 'تم'; btn.disabled = true; btn.classList.add('done'); }
+      else if (!done) { btn.textContent = 'لم يكتمل'; btn.disabled = true; }
+      else {
+        btn.textContent = 'استلم +٢';
+        btn.onclick = () => {
+          save.daily.claimed = save.daily.claimed || {};
+          save.daily.claimed[r.k] = 1;
+          save.meta.pts = (save.meta.pts || 0) + 2;
+          persist(); renderDaily(); renderMeta(); AUDIO.sfx.coin();
+          achToast({ icon: '✦', name: 'مكافأة تحدي اليوم' });
+        };
+      }
+      li.appendChild(tx); li.appendChild(btn);
+      list.appendChild(li);
+    });
+    const el = $('#daily-reset');
+    if (el) el.textContent = 'تتجدد كل يوم';
+  }
+
   // ---------- ترقيات المعسكر (دائمة) ----------
   const META = [
     { k: 'dmg', name: 'حدّ السيوف', desc: '+٤٪ ضرر لكل الوحدات لكل مستوى', max: 8 },
@@ -3522,6 +3611,9 @@ const UI = (() => {
       <li><span>قلعة متبقية</span><b>${Math.round((S.gateHp / S.gateMax) * 100)}%</b></li>
       <li><span>زمن المعركة</span><b>${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}</b></li>
       <li><span>نقاط المجد</span><b>+${glory}</b></li>`;
+    ensureDaily();
+    save.daily.kills = (save.daily.kills || 0) + S.kills;
+    if (won) save.daily.wins = (save.daily.wins || 0) + 1;
     const glory = won ? 3 + stars : Math.max(1, Math.floor((S.wave || 0) / 2));
     save.meta.pts = (save.meta.pts || 0) + glory;
     persist();
@@ -3589,7 +3681,7 @@ const UI = (() => {
     $('#btn-levels').onclick = () => { AUDIO.resume(); AUDIO.sfx.click(); show('levels'); };
     $('#btn-settings').onclick = () => { AUDIO.sfx.click(); $('#settings-overlay').classList.add('open'); };
     $('#btn-about').onclick = () => { AUDIO.sfx.click(); $('#about-overlay').classList.add('open'); };
-    $('#btn-ach').onclick = () => { AUDIO.sfx.click(); renderAch(); $('#ach-overlay').classList.add('open'); };
+    $('#btn-ach').onclick = () => { AUDIO.sfx.click(); renderDaily(); renderAch(); $('#ach-overlay').classList.add('open'); };
     $('#btn-meta').onclick = () => { AUDIO.sfx.click(); renderMeta(); $('#meta-overlay').classList.add('open'); };
     $('#btn-close-meta').onclick = () => { AUDIO.sfx.click(); $('#meta-overlay').classList.remove('open'); };
     $('#btn-reset-meta').onclick = () => {
@@ -3622,6 +3714,7 @@ const UI = (() => {
         if (GAME.ability(b.dataset.ability)) {
           AUDIO.sfx[b.dataset.ability === 'volley' ? 'volley' : b.dataset.ability === 'rally' ? 'ability' : 'charge']();
           save.stats.abilities = (save.stats.abilities || 0) + 1;
+          ensureDaily(); save.daily.abilities = (save.daily.abilities || 0) + 1;
           persist();
           if ((save.tut || 0) === 2) tutAdvance(3);
           if (save.stats.abilities >= 15) unlockAch('abilities');
@@ -3723,7 +3816,7 @@ const UI = (() => {
       ability: (n) => GAME.ability(n),
       state: () => GAME.state,
       step: (seconds) => { const n = Math.round(seconds / 0.05); for (let i = 0; i < n; i++) GAME.update(0.05); updateHud(); },
-      save, show, GAME, UI, world: W3, post: POST, ACH, renderAch, tutShow, renderMeta,
+      save, show, GAME, UI, world: W3, post: POST, ACH, renderAch, tutShow, renderMeta, renderDaily,
     };
   }
 
